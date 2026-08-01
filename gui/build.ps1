@@ -41,4 +41,21 @@ if (Test-Path -LiteralPath $archivePath) {
 }
 Compress-Archive -LiteralPath (Join-Path $distPath "RatioSpoofManager") -DestinationPath $archivePath
 
-Write-Host "Built: $archivePath"
+python -m PyInstaller `
+    --noconfirm `
+    --clean `
+    --onefile `
+    --noupx `
+    --windowed `
+    --name "RatioSpoofManager-Windows-Standalone-x86_64" `
+    --icon $iconPath `
+    --version-file $versionFile `
+    --add-binary "$enginePath;." `
+    --add-data "$assetsPath;assets" `
+    --distpath $distPath `
+    --workpath $buildPath `
+    --specpath $buildPath `
+    $sourcePath
+
+Write-Host "Built portable archive: $archivePath"
+Write-Host "Built standalone executable: $distPath\RatioSpoofManager-Windows-Standalone-x86_64.exe"

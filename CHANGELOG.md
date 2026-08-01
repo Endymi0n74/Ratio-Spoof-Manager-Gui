@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.3 - 2026-08-01
+
+- add an optional standalone Windows executable alongside the recommended portable ZIP;
+- rebuild and publish fresh Windows, Linux, and macOS packages from the same tagged source.
+
 ## 1.2.2 - 2026-08-01
 
 - handle the Windows form-feed emitted by `cls` so the live journal refreshes in place;

@@ -25,7 +25,7 @@ COLORS = {
     "input": "#0E162A",
 }
 
-APP_VERSION = "1.2.2"
+APP_VERSION = "1.2.3"
 AMOUNT_PATTERN = re.compile(r"^\d+(?:[.,]\d+)?(?:%|b|kb|mb|gb|tb)$", re.IGNORECASE)
 SPEED_PATTERN = re.compile(r"^\d+(?:[.,]\d+)?(?:kbps|mbps)$", re.IGNORECASE)
 ANSI_ESCAPE_PATTERN = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
