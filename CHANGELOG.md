@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.1 - 2026-08-01
+
+- render terminal refreshes in place instead of duplicating the engine status block;
+- remove ANSI terminal control sequences from the integrated execution journal.
+
 ## 1.2.0 - 2026-08-01
 
 - add native packaged releases for Windows, Linux, and macOS;
