@@ -1,13 +1,40 @@
 # Ratio Spoof Manager GUI
 
+## Français
+
+`ratio_spoof_manager.py` est une interface Tkinter pour le moteur en ligne de commande `ratio-spoof`.
+
+Fonctionnalités : journal intégré, validation des unités, port configurable, émulation qBittorrent, prévention des lancements multiples et arrêt contrôlé du moteur.
+
+### Lancer depuis les sources
+
+Python 3.11 ou plus récent est recommandé. Placez une version Windows de `ratio-spoof.exe` à l’emplacement de votre choix, lancez l’interface puis sélectionnez ce moteur avec **Chemin personnalisé**.
+
+```powershell
+python .\gui\ratio_spoof_manager.py
+```
+
+### Compiler l’exécutable autonome
+
+Depuis la racine du dépôt :
+
+```powershell
+python -m pip install -r .\gui\requirements-build.txt
+.\gui\build.ps1 -RatioSpoofExecutable .\ratio-spoof.exe
+```
+
+Le résultat est écrit dans `dist\RatioSpoofManager-Modern.exe`.
+
+## English
+
 `ratio_spoof_manager.py` is a Tkinter interface for the `ratio-spoof` command-line engine.
 
 ## Run from source
 
-Python 3.11 or newer is recommended. Place a Windows build of `ratio-spoof.exe` beside the script, then run:
+Python 3.11 or newer is recommended. Start the interface, then select a Windows build of `ratio-spoof.exe` using **Custom path**.
 
 ```powershell
-python .\ratio_spoof_manager.py
+python .\gui\ratio_spoof_manager.py
 ```
 
 The interface can also use a custom engine path selected at runtime.

@@ -24,6 +24,16 @@ COLORS = {
     "input": "#0E162A",
 }
 
+APP_VERSION = "1.1.0"
+AMOUNT_PATTERN = re.compile(r"^\d+(?:[.,]\d+)?(?:%|b|kb|mb|gb|tb)$", re.IGNORECASE)
+SPEED_PATTERN = re.compile(r"^\d+(?:[.,]\d+)?(?:kbps|mbps)$", re.IGNORECASE)
+SUPPORTED_CLIENTS = ("qbit-4.0.3", "qbit-4.3.3")
+
+
+def normalize_parameter(value: str) -> str:
+    normalized = re.sub(r"\s+", "", value).lower().replace(",", ".")
+    return normalized.replace("mpbs", "mbps").replace("kpbs", "kbps")
+
 
 def resource_path(name: str) -> Path:
     base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
@@ -53,10 +63,14 @@ def install_embedded_engine() -> Path:
 class ModernRatioSpoofManager:
     def __init__(self, root: tk.Tk):
         self.root = root
-        self.root.title("Ratio Spoof Manager")
-        self.root.geometry("760x720")
-        self.root.minsize(700, 680)
+        self.root.title(f"Ratio Spoof Manager {APP_VERSION}")
+        self.root.geometry("760x800")
+        self.root.minsize(700, 760)
         self.root.configure(bg=COLORS["bg"])
+        try:
+            self.root.iconbitmap(resource_path("assets/app-icon.ico"))
+        except tk.TclError:
+            pass
 
         self.exe_path = tk.StringVar()
         self.torrent_path = tk.StringVar()
@@ -64,6 +78,8 @@ class ModernRatioSpoofManager:
         self.dl_speed = tk.StringVar(value="10mbps")
         self.uploaded = tk.StringVar(value="50%")
         self.ul_speed = tk.StringVar(value="5mbps")
+        self.port = tk.StringVar(value="8999")
+        self.client = tk.StringVar(value=SUPPORTED_CLIENTS[0])
         self.use_embedded = tk.BooleanVar(value=True)
         self.status = tk.StringVar(value="Prêt à configurer")
         self.status_color = COLORS["muted"]
@@ -83,12 +99,16 @@ class ModernRatioSpoofManager:
         self.container.grid_rowconfigure(0, weight=1)
         self.container.grid_columnconfigure(0, weight=1, minsize=700)
         shell = tk.Frame(self.container, bg=COLORS["bg"])
-        shell.grid(row=0, column=0, sticky="nsew", padx=34, pady=18)
+        shell.grid(row=0, column=0, sticky="nsew", padx=34, pady=10)
 
         header = tk.Frame(shell, bg=COLORS["bg"])
-        header.pack(fill="x", pady=(0, 14))
-        icon = tk.Label(header, text="↗", font=("Segoe UI", 24, "bold"), bg=COLORS["accent"],
-                        fg=COLORS["bg"], width=2, height=1)
+        header.pack(fill="x", pady=(0, 8))
+        try:
+            self.header_icon = tk.PhotoImage(file=resource_path("assets/app-icon.png")).subsample(19, 19)
+            icon = tk.Label(header, image=self.header_icon, bg=COLORS["bg"])
+        except tk.TclError:
+            icon = tk.Label(header, text="↗", font=("Segoe UI", 24, "bold"), bg=COLORS["accent"],
+                            fg=COLORS["bg"], width=2, height=1)
         icon.pack(side="left", padx=(0, 14))
         titles = tk.Frame(header, bg=COLORS["bg"])
         titles.pack(side="left")
@@ -96,13 +116,15 @@ class ModernRatioSpoofManager:
                  bg=COLORS["bg"], fg=COLORS["text"]).pack(anchor="w")
         tk.Label(titles, text="Configurez puis lancez votre session en quelques secondes",
                  font=("Segoe UI", 10), bg=COLORS["bg"], fg=COLORS["muted"]).pack(anchor="w", pady=(3, 0))
+        tk.Label(header, text=f"v{APP_VERSION}", font=("Segoe UI", 9, "bold"), bg=COLORS["panel_alt"],
+                 fg=COLORS["accent"], padx=10, pady=5).pack(side="right", anchor="n")
 
         self._section_label(shell, "01", "SOURCE DU PROGRAMME")
         source_card = self._card(shell)
-        source_card.pack(fill="x", pady=(6, 12))
+        source_card.pack(fill="x", pady=(4, 8))
 
         switch_row = tk.Frame(source_card, bg=COLORS["panel"])
-        switch_row.pack(fill="x", padx=18, pady=(12, 8))
+        switch_row.pack(fill="x", padx=18, pady=(8, 6))
         self.embedded_btn = self._segmented_button(switch_row, "Version intégrée", True)
         self.embedded_btn.pack(side="left", fill="x", expand=True)
         self.custom_btn = self._segmented_button(switch_row, "Chemin personnalisé", False)
@@ -111,26 +133,45 @@ class ModernRatioSpoofManager:
         self.exe_row, self.exe_entry = self._file_row(
             source_card, self.exe_path, "Sélectionner ratio-spoof.exe", self._browse_exe, "PARCOURIR"
         )
-        self.exe_row.pack(fill="x", padx=18, pady=(0, 12))
+        self.exe_row.pack(fill="x", padx=18, pady=(0, 8))
 
         self._section_label(shell, "02", "FICHIER TORRENT")
         torrent_card = self._card(shell)
-        torrent_card.pack(fill="x", pady=(6, 12))
+        torrent_card.pack(fill="x", pady=(4, 8))
         torrent_row, _ = self._file_row(
             torrent_card, self.torrent_path, "Sélectionner un fichier .torrent", self._browse_torrent, "CHOISIR"
         )
-        torrent_row.pack(fill="x", padx=18, pady=12)
+        torrent_row.pack(fill="x", padx=18, pady=8)
 
         self._section_label(shell, "03", "PARAMÈTRES DE TRANSFERT")
         metrics = self._card(shell)
-        metrics.pack(fill="x", pady=(6, 12))
+        metrics.pack(fill="x", pady=(4, 8))
         grid = tk.Frame(metrics, bg=COLORS["panel"])
-        grid.pack(fill="x", padx=18, pady=12)
+        grid.pack(fill="x", padx=18, pady=8)
         grid.columnconfigure((0, 1), weight=1, uniform="metric")
         self._metric(grid, 0, 0, "TÉLÉCHARGÉ", self.downloaded, "ex. 100%")
         self._metric(grid, 0, 1, "VITESSE DESCENDANTE", self.dl_speed, "ex. 10mbps")
         self._metric(grid, 1, 0, "UPLOADÉ", self.uploaded, "ex. 50%")
         self._metric(grid, 1, 1, "VITESSE MONTANTE", self.ul_speed, "ex. 5mbps")
+
+        self._section_label(shell, "04", "OPTIONS DU CLIENT")
+        options = self._card(shell)
+        options.pack(fill="x", pady=(4, 8))
+        option_grid = tk.Frame(options, bg=COLORS["panel"])
+        option_grid.pack(fill="x", padx=18, pady=8)
+        option_grid.columnconfigure((0, 1), weight=1, uniform="option")
+        self._metric(option_grid, 0, 0, "PORT D'ÉCOUTE", self.port, "1 à 65535")
+        client_box = tk.Frame(option_grid, bg=COLORS["panel"])
+        client_box.grid(row=0, column=1, sticky="ew", padx=(8, 0))
+        tk.Label(client_box, text="ÉMULATION CLIENT", font=("Segoe UI", 8, "bold"),
+                 bg=COLORS["panel"], fg=COLORS["muted"]).pack(anchor="w", pady=(0, 6))
+        client_menu = tk.OptionMenu(client_box, self.client, *SUPPORTED_CLIENTS)
+        client_menu.configure(font=("Segoe UI", 10, "bold"), bg=COLORS["input"], fg=COLORS["text"],
+                              activebackground=COLORS["border"], activeforeground=COLORS["text"],
+                              relief="flat", bd=0, highlightthickness=0)
+        client_menu["menu"].configure(bg=COLORS["panel_alt"], fg=COLORS["text"],
+                                      activebackground=COLORS["accent"], activeforeground=COLORS["bg"])
+        client_menu.pack(fill="x", ipady=4)
 
         footer = tk.Frame(shell, bg=COLORS["bg"])
         footer.pack(fill="x", pady=(2, 0))
@@ -229,21 +270,30 @@ class ModernRatioSpoofManager:
         if any(not field.get().strip() for field in fields):
             return None, None, "Tous les paramètres de transfert sont obligatoires."
         self._normalize_parameters()
-        amount_pattern = re.compile(r"^\d+(?:[.,]\d+)?(?:%|b|kb|mb|gb|tb)$", re.IGNORECASE)
-        speed_pattern = re.compile(r"^\d+(?:[.,]\d+)?(?:kbps|mbps)$", re.IGNORECASE)
-        if not amount_pattern.fullmatch(self.downloaded.get()) or not amount_pattern.fullmatch(self.uploaded.get()):
+        if not AMOUNT_PATTERN.fullmatch(self.downloaded.get()) or not AMOUNT_PATTERN.fullmatch(self.uploaded.get()):
             return None, None, "Les quantités doivent utiliser %, b, kb, mb, gb ou tb (ex. 100%)."
-        if not speed_pattern.fullmatch(self.dl_speed.get()) or not speed_pattern.fullmatch(self.ul_speed.get()):
+        if not SPEED_PATTERN.fullmatch(self.dl_speed.get()) or not SPEED_PATTERN.fullmatch(self.ul_speed.get()):
             return None, None, "Les vitesses doivent utiliser kbps ou mbps, sans espace (ex. 100mbps)."
+        try:
+            port = int(self.port.get())
+        except ValueError:
+            return None, None, "Le port doit être un nombre compris entre 1 et 65535."
+        if not 1 <= port <= 65535:
+            return None, None, "Le port doit être compris entre 1 et 65535."
+        if self.client.get() not in SUPPORTED_CLIENTS:
+            return None, None, "Sélectionnez une émulation client prise en charge."
         return exe, torrent, None
 
     def _normalize_parameters(self):
         for variable in (self.downloaded, self.dl_speed, self.uploaded, self.ul_speed):
-            normalized = re.sub(r"\s+", "", variable.get()).lower().replace(",", ".")
-            normalized = normalized.replace("mpbs", "mbps").replace("kpbs", "kbps")
-            variable.set(normalized)
+            variable.set(normalize_parameter(variable.get()))
 
     def _launch(self):
+        if self.process and self.process.poll() is None:
+            self._set_status("Un moteur est déjà en cours d’exécution", COLORS["danger"])
+            if self.log_panel:
+                self.log_panel.focus_set()
+            return
         exe, torrent, error = self._validate()
         if error:
             self._set_status(error, COLORS["danger"])
@@ -252,13 +302,15 @@ class ModernRatioSpoofManager:
         recap = (
             f"Torrent : {torrent.name}\n\n"
             f"Téléchargé : {self.downloaded.get()}  •  {self.dl_speed.get()}\n"
-            f"Uploadé : {self.uploaded.get()}  •  {self.ul_speed.get()}"
+            f"Uploadé : {self.uploaded.get()}  •  {self.ul_speed.get()}\n"
+            f"Client : {self.client.get()}  •  Port : {self.port.get()}"
         )
         if not messagebox.askyesno("Confirmer le lancement", recap + "\n\nLancer maintenant ?"):
             return
         args = [str(exe), "-t", str(torrent), "-d", self.downloaded.get().strip(),
                 "-ds", self.dl_speed.get().strip(), "-u", self.uploaded.get().strip(),
-                "-us", self.ul_speed.get().strip()]
+                "-us", self.ul_speed.get().strip(), "-p", self.port.get().strip(),
+                "-c", self.client.get()]
         try:
             self._open_log_panel(torrent.name)
             self.process = subprocess.Popen(
@@ -276,6 +328,7 @@ class ModernRatioSpoofManager:
             self._save_settings()
             self._append_log("Commande lancée. En attente du moteur…\n")
             self._set_status("Moteur en cours d’exécution", COLORS["green"])
+            self.launch_btn.configure(state="disabled", text="EN COURS…")
             threading.Thread(target=self._monitor_process, daemon=True).start()
         except Exception as exc:
             self._set_status("Échec du lancement", COLORS["danger"])
@@ -284,8 +337,8 @@ class ModernRatioSpoofManager:
     def _open_log_panel(self, torrent_name):
         if self.log_panel and self.log_panel.winfo_exists():
             self.log_panel.destroy()
-        self.root.geometry("1260x720")
-        self.root.minsize(1050, 680)
+        self.root.geometry("1260x800")
+        self.root.minsize(1050, 760)
         self.container.grid_columnconfigure(1, weight=1, minsize=450)
         self.log_panel = tk.Frame(self.container, bg=COLORS["panel"], highlightthickness=1,
                                   highlightbackground=COLORS["border"])
@@ -317,8 +370,8 @@ class ModernRatioSpoofManager:
         self.log_panel = None
         self.log_text = None
         self.container.grid_columnconfigure(1, weight=0, minsize=0)
-        self.root.minsize(700, 680)
-        self.root.geometry("760x720")
+        self.root.minsize(700, 760)
+        self.root.geometry("760x800")
 
     def _append_log(self, content):
         if self.log_text and self.log_text.winfo_exists():
@@ -336,6 +389,8 @@ class ModernRatioSpoofManager:
             self.root.after(0, self._append_log, f"\nErreur de lecture : {exc}\n")
 
     def _process_finished(self, code):
+        self.process = None
+        self.launch_btn.configure(state="normal", text="LANCER  →")
         self._append_log(f"\nLe moteur s’est arrêté avec le code {code}.\n")
         if code == 0:
             self._set_status("Moteur arrêté", COLORS["muted"])
@@ -355,6 +410,8 @@ class ModernRatioSpoofManager:
             self.dl_speed.set(data.get("dl_speed", "10mbps"))
             self.uploaded.set(data.get("uploaded", "50%"))
             self.ul_speed.set(data.get("ul_speed", "5mbps"))
+            self.port.set(str(data.get("port", "8999")))
+            self.client.set(data.get("client", SUPPORTED_CLIENTS[0]))
             self.use_embedded.set(bool(data.get("use_embedded", True)))
         except (OSError, ValueError, TypeError):
             pass
@@ -362,13 +419,24 @@ class ModernRatioSpoofManager:
     def _save_settings(self):
         data = {"exe_path": self.exe_path.get(), "downloaded": self.downloaded.get(),
                 "dl_speed": self.dl_speed.get(), "uploaded": self.uploaded.get(),
-                "ul_speed": self.ul_speed.get(), "use_embedded": self.use_embedded.get()}
+                "ul_speed": self.ul_speed.get(), "port": self.port.get(),
+                "client": self.client.get(), "use_embedded": self.use_embedded.get()}
         try:
             settings_path().write_text(json.dumps(data, indent=2), encoding="utf-8")
         except OSError:
             pass
 
     def _close(self):
+        if self.process and self.process.poll() is None:
+            should_stop = messagebox.askyesno(
+                "Moteur actif",
+                "Le moteur est encore en cours d’exécution.\n\n"
+                "Voulez-vous l’arrêter et quitter ?\n"
+                "Choisissez Non pour garder l’application ouverte.",
+            )
+            if not should_stop:
+                return
+            self._stop_process()
         self._save_settings()
         self.root.destroy()
 
