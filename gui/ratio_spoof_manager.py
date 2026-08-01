@@ -2,6 +2,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import threading
@@ -24,10 +25,15 @@ COLORS = {
     "input": "#0E162A",
 }
 
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.2.0"
 AMOUNT_PATTERN = re.compile(r"^\d+(?:[.,]\d+)?(?:%|b|kb|mb|gb|tb)$", re.IGNORECASE)
 SPEED_PATTERN = re.compile(r"^\d+(?:[.,]\d+)?(?:kbps|mbps)$", re.IGNORECASE)
 SUPPORTED_CLIENTS = ("qbit-4.0.3", "qbit-4.3.3")
+IS_WINDOWS = sys.platform == "win32"
+IS_MACOS = sys.platform == "darwin"
+ENGINE_FILENAME = "ratio-spoof.exe" if IS_WINDOWS else "ratio-spoof"
+UI_FONT = "Segoe UI" if IS_WINDOWS else ("SF Pro Display" if IS_MACOS else "DejaVu Sans")
+MONO_FONT = "Cascadia Mono" if IS_WINDOWS else ("Menlo" if IS_MACOS else "DejaVu Sans Mono")
 
 
 def normalize_parameter(value: str) -> str:
@@ -40,21 +46,33 @@ def resource_path(name: str) -> Path:
     return base / name
 
 
+def app_data_folder() -> Path:
+    if IS_WINDOWS:
+        return Path(os.getenv("LOCALAPPDATA", os.getenv("APPDATA", Path.home()))) / "RatioSpoofManager"
+    if IS_MACOS:
+        return Path.home() / "Library" / "Application Support" / "RatioSpoofManager"
+    return Path(os.getenv("XDG_DATA_HOME", Path.home() / ".local" / "share")) / "RatioSpoofManager"
+
+
 def settings_path() -> Path:
-    folder = Path(os.getenv("APPDATA", Path.home())) / "RatioSpoofManager"
+    folder = app_data_folder()
     folder.mkdir(parents=True, exist_ok=True)
     return folder / "settings.json"
 
 
 def install_embedded_engine() -> Path:
     """Copy the bundled engine out of PyInstaller's temporary extraction folder."""
-    bundled = resource_path("ratio-spoof.exe")
-    folder = Path(os.getenv("LOCALAPPDATA", os.getenv("APPDATA", Path.home()))) / "RatioSpoofManager" / "engine"
-    installed = folder / "ratio-spoof.exe"
+    bundled = resource_path(ENGINE_FILENAME)
+    folder = app_data_folder() / "engine"
+    installed = folder / ENGINE_FILENAME
     try:
         folder.mkdir(parents=True, exist_ok=True)
+        if not bundled.exists():
+            return installed if installed.exists() else bundled
         if not installed.exists() or installed.stat().st_size != bundled.stat().st_size:
             shutil.copy2(bundled, installed)
+        if not IS_WINDOWS:
+            installed.chmod(installed.stat().st_mode | 0o111)
         return installed
     except OSError:
         return bundled
@@ -68,7 +86,8 @@ class ModernRatioSpoofManager:
         self.root.minsize(700, 760)
         self.root.configure(bg=COLORS["bg"])
         try:
-            self.root.iconbitmap(resource_path("assets/app-icon.ico"))
+            self.root_icon = tk.PhotoImage(file=resource_path("assets/app-icon.png"))
+            self.root.iconphoto(True, self.root_icon)
         except tk.TclError:
             pass
 
@@ -107,16 +126,16 @@ class ModernRatioSpoofManager:
             self.header_icon = tk.PhotoImage(file=resource_path("assets/app-icon.png")).subsample(19, 19)
             icon = tk.Label(header, image=self.header_icon, bg=COLORS["bg"])
         except tk.TclError:
-            icon = tk.Label(header, text="↗", font=("Segoe UI", 24, "bold"), bg=COLORS["accent"],
+            icon = tk.Label(header, text="↗", font=(UI_FONT, 24, "bold"), bg=COLORS["accent"],
                             fg=COLORS["bg"], width=2, height=1)
         icon.pack(side="left", padx=(0, 14))
         titles = tk.Frame(header, bg=COLORS["bg"])
         titles.pack(side="left")
-        tk.Label(titles, text="Ratio Spoof Manager", font=("Segoe UI", 23, "bold"),
+        tk.Label(titles, text="Ratio Spoof Manager", font=(UI_FONT, 23, "bold"),
                  bg=COLORS["bg"], fg=COLORS["text"]).pack(anchor="w")
         tk.Label(titles, text="Configurez puis lancez votre session en quelques secondes",
-                 font=("Segoe UI", 10), bg=COLORS["bg"], fg=COLORS["muted"]).pack(anchor="w", pady=(3, 0))
-        tk.Label(header, text=f"v{APP_VERSION}", font=("Segoe UI", 9, "bold"), bg=COLORS["panel_alt"],
+                 font=(UI_FONT, 10), bg=COLORS["bg"], fg=COLORS["muted"]).pack(anchor="w", pady=(3, 0))
+        tk.Label(header, text=f"v{APP_VERSION}", font=(UI_FONT, 9, "bold"), bg=COLORS["panel_alt"],
                  fg=COLORS["accent"], padx=10, pady=5).pack(side="right", anchor="n")
 
         self._section_label(shell, "01", "SOURCE DU PROGRAMME")
@@ -131,7 +150,7 @@ class ModernRatioSpoofManager:
         self.custom_btn.pack(side="left", fill="x", expand=True, padx=(8, 0))
 
         self.exe_row, self.exe_entry = self._file_row(
-            source_card, self.exe_path, "Sélectionner ratio-spoof.exe", self._browse_exe, "PARCOURIR"
+            source_card, self.exe_path, f"Sélectionner {ENGINE_FILENAME}", self._browse_exe, "PARCOURIR"
         )
         self.exe_row.pack(fill="x", padx=18, pady=(0, 8))
 
@@ -163,10 +182,10 @@ class ModernRatioSpoofManager:
         self._metric(option_grid, 0, 0, "PORT D'ÉCOUTE", self.port, "1 à 65535")
         client_box = tk.Frame(option_grid, bg=COLORS["panel"])
         client_box.grid(row=0, column=1, sticky="ew", padx=(8, 0))
-        tk.Label(client_box, text="ÉMULATION CLIENT", font=("Segoe UI", 8, "bold"),
+        tk.Label(client_box, text="ÉMULATION CLIENT", font=(UI_FONT, 8, "bold"),
                  bg=COLORS["panel"], fg=COLORS["muted"]).pack(anchor="w", pady=(0, 6))
         client_menu = tk.OptionMenu(client_box, self.client, *SUPPORTED_CLIENTS)
-        client_menu.configure(font=("Segoe UI", 10, "bold"), bg=COLORS["input"], fg=COLORS["text"],
+        client_menu.configure(font=(UI_FONT, 10, "bold"), bg=COLORS["input"], fg=COLORS["text"],
                               activebackground=COLORS["border"], activeforeground=COLORS["text"],
                               relief="flat", bd=0, highlightthickness=0)
         client_menu["menu"].configure(bg=COLORS["panel_alt"], fg=COLORS["text"],
@@ -175,11 +194,11 @@ class ModernRatioSpoofManager:
 
         footer = tk.Frame(shell, bg=COLORS["bg"])
         footer.pack(fill="x", pady=(2, 0))
-        self.status_label = tk.Label(footer, textvariable=self.status, font=("Segoe UI", 10),
+        self.status_label = tk.Label(footer, textvariable=self.status, font=(UI_FONT, 10),
                                      bg=COLORS["bg"], fg=self.status_color)
         self.status_label.pack(side="left")
         self.launch_btn = tk.Button(
-            footer, text="LANCER  →", command=self._launch, font=("Segoe UI", 12, "bold"),
+            footer, text="LANCER  →", command=self._launch, font=(UI_FONT, 12, "bold"),
             bg=COLORS["accent"], fg="#081126", activebackground=COLORS["accent_hover"],
             activeforeground="#081126", bd=0, padx=30, pady=13, cursor="hand2"
         )
@@ -190,9 +209,9 @@ class ModernRatioSpoofManager:
     def _section_label(self, parent, number, title):
         row = tk.Frame(parent, bg=COLORS["bg"])
         row.pack(fill="x")
-        tk.Label(row, text=number, font=("Segoe UI", 9, "bold"), bg=COLORS["bg"],
+        tk.Label(row, text=number, font=(UI_FONT, 9, "bold"), bg=COLORS["bg"],
                  fg=COLORS["accent"]).pack(side="left")
-        tk.Label(row, text=title, font=("Segoe UI", 9, "bold"), bg=COLORS["bg"],
+        tk.Label(row, text=title, font=(UI_FONT, 9, "bold"), bg=COLORS["bg"],
                  fg=COLORS["muted"]).pack(side="left", padx=(9, 0))
 
     def _card(self, parent):
@@ -201,7 +220,7 @@ class ModernRatioSpoofManager:
 
     def _segmented_button(self, parent, text, embedded):
         return tk.Button(parent, text=text, command=lambda: self._set_source(embedded),
-                         font=("Segoe UI", 10, "bold"), bd=0, pady=9, cursor="hand2")
+                         font=(UI_FONT, 10, "bold"), bd=0, pady=9, cursor="hand2")
 
     def _set_source(self, embedded):
         self.use_embedded.set(embedded)
@@ -222,12 +241,12 @@ class ModernRatioSpoofManager:
 
     def _file_row(self, parent, variable, placeholder, command, button_text):
         row = tk.Frame(parent, bg=COLORS["panel"])
-        entry = tk.Entry(row, textvariable=variable, font=("Segoe UI", 10), bg=COLORS["input"],
+        entry = tk.Entry(row, textvariable=variable, font=(UI_FONT, 10), bg=COLORS["input"],
                          fg=COLORS["text"], insertbackground=COLORS["text"], relief="flat", bd=0)
         entry.pack(side="left", fill="x", expand=True, ipady=10, padx=(0, 10))
         if not variable.get():
             entry.insert(0, "")
-        button = tk.Button(row, text=button_text, command=command, font=("Segoe UI", 9, "bold"),
+        button = tk.Button(row, text=button_text, command=command, font=(UI_FONT, 9, "bold"),
                            bg=COLORS["panel_alt"], fg=COLORS["text"], activebackground=COLORS["border"],
                            activeforeground=COLORS["text"], bd=0, padx=15, pady=10, cursor="hand2")
         button.pack(side="right")
@@ -237,15 +256,16 @@ class ModernRatioSpoofManager:
         box = tk.Frame(parent, bg=COLORS["panel"])
         box.grid(row=row, column=column, sticky="ew", padx=(0 if column == 0 else 8, 8 if column == 0 else 0),
                  pady=(0 if row == 0 else 12, 0))
-        tk.Label(box, text=label, font=("Segoe UI", 8, "bold"), bg=COLORS["panel"],
+        tk.Label(box, text=label, font=(UI_FONT, 8, "bold"), bg=COLORS["panel"],
                  fg=COLORS["muted"]).pack(anchor="w", pady=(0, 6))
-        tk.Entry(box, textvariable=variable, font=("Segoe UI", 11, "bold"), bg=COLORS["input"],
+        tk.Entry(box, textvariable=variable, font=(UI_FONT, 11, "bold"), bg=COLORS["input"],
                  fg=COLORS["text"], insertbackground=COLORS["text"], relief="flat", bd=0).pack(fill="x", ipady=9)
-        tk.Label(box, text=hint, font=("Segoe UI", 8), bg=COLORS["panel"],
+        tk.Label(box, text=hint, font=(UI_FONT, 8), bg=COLORS["panel"],
                  fg=COLORS["muted"]).pack(anchor="w", pady=(4, 0))
 
     def _browse_exe(self):
-        path = filedialog.askopenfilename(title="Choisir ratio-spoof.exe", filetypes=[("Exécutable", "*.exe")])
+        filters = [("Exécutable", "*.exe")] if IS_WINDOWS else [("Tous les fichiers", "*")]
+        path = filedialog.askopenfilename(title=f"Choisir {ENGINE_FILENAME}", filetypes=filters)
         if path:
             self.exe_path.set(path)
 
@@ -263,7 +283,7 @@ class ModernRatioSpoofManager:
         exe = self.embedded_exe if self.use_embedded.get() else Path(self.exe_path.get().strip())
         torrent = Path(self.torrent_path.get().strip())
         if not exe.is_file():
-            return None, None, "Le programme ratio-spoof.exe est introuvable."
+            return None, None, f"Le programme {ENGINE_FILENAME} est introuvable."
         if not torrent.is_file() or torrent.suffix.lower() != ".torrent":
             return None, None, "Sélectionnez un fichier .torrent valide."
         fields = [self.downloaded, self.dl_speed, self.uploaded, self.ul_speed]
@@ -313,6 +333,11 @@ class ModernRatioSpoofManager:
                 "-c", self.client.get()]
         try:
             self._open_log_panel(torrent.name)
+            platform_options = (
+                {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)}
+                if IS_WINDOWS
+                else {"start_new_session": True}
+            )
             self.process = subprocess.Popen(
                 args,
                 cwd=str(exe.parent),
@@ -323,7 +348,7 @@ class ModernRatioSpoofManager:
                 encoding="utf-8",
                 errors="replace",
                 bufsize=1,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                **platform_options,
             )
             self._save_settings()
             self._append_log("Commande lancée. En attente du moteur…\n")
@@ -345,22 +370,22 @@ class ModernRatioSpoofManager:
         self.log_panel.grid(row=0, column=1, sticky="nsew", padx=(0, 24), pady=18)
         head = tk.Frame(self.log_panel, bg=COLORS["panel"])
         head.pack(fill="x", padx=22, pady=(20, 12))
-        tk.Label(head, text="Journal d’exécution", font=("Segoe UI", 17, "bold"),
+        tk.Label(head, text="Journal d’exécution", font=(UI_FONT, 17, "bold"),
                  bg=COLORS["panel"], fg=COLORS["text"]).pack(anchor="w")
-        tk.Label(head, text=torrent_name, font=("Segoe UI", 9), bg=COLORS["panel"],
+        tk.Label(head, text=torrent_name, font=(UI_FONT, 9), bg=COLORS["panel"],
                  fg=COLORS["muted"]).pack(anchor="w", pady=(3, 0))
         self.log_text = tk.Text(self.log_panel, bg=COLORS["input"], fg=COLORS["text"],
                                 insertbackground=COLORS["text"], relief="flat", bd=0,
-                                font=("Cascadia Mono", 10), padx=14, pady=14, wrap="word")
+                                font=(MONO_FONT, 10), padx=14, pady=14, wrap="word")
         self.log_text.pack(fill="both", expand=True, padx=22)
         controls = tk.Frame(self.log_panel, bg=COLORS["panel"])
         controls.pack(fill="x", padx=22, pady=16)
         tk.Button(controls, text="ARRÊTER LE MOTEUR", command=self._stop_process,
-                  font=("Segoe UI", 9, "bold"), bg=COLORS["panel_alt"], fg=COLORS["danger"],
+                  font=(UI_FONT, 9, "bold"), bg=COLORS["panel_alt"], fg=COLORS["danger"],
                   activebackground=COLORS["border"], activeforeground=COLORS["danger"],
                   bd=0, padx=16, pady=9, cursor="hand2").pack(side="left")
         tk.Button(controls, text="MASQUER LE JOURNAL", command=self._hide_log_panel,
-                  font=("Segoe UI", 9, "bold"), bg=COLORS["accent"], fg="#081126",
+                  font=(UI_FONT, 9, "bold"), bg=COLORS["accent"], fg="#081126",
                   activebackground=COLORS["accent_hover"], bd=0, padx=16, pady=9,
                   cursor="hand2").pack(side="right")
 
@@ -399,7 +424,10 @@ class ModernRatioSpoofManager:
 
     def _stop_process(self):
         if self.process and self.process.poll() is None:
-            self.process.terminate()
+            if IS_WINDOWS:
+                self.process.terminate()
+            else:
+                os.killpg(self.process.pid, signal.SIGTERM)
             self._append_log("\nArrêt demandé…\n")
 
     def _load_settings(self):

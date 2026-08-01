@@ -24,7 +24,7 @@ python -m PyInstaller `
     --clean `
     --onefile `
     --windowed `
-    --name "RatioSpoofManager-Modern" `
+    --name "RatioSpoofManager-Windows-x86_64" `
     --icon $iconPath `
     --version-file $versionFile `
     --add-binary "$enginePath;." `
@@ -34,4 +34,4 @@ python -m PyInstaller `
     --specpath $buildPath `
     $sourcePath
 
-Write-Host "Built: $distPath\RatioSpoofManager-Modern.exe"
+Write-Host "Built: $distPath\RatioSpoofManager-Windows-x86_64.exe"

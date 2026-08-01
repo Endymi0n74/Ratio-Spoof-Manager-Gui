@@ -8,7 +8,7 @@ Ratio-spoof is a cross-platform, free and open source tool to spoof the download
 
 ## Windows GUI
 
-This repository also includes **Ratio Spoof Manager**, a modern Windows interface for configuring and running the command-line engine.
+This repository also includes **Ratio Spoof Manager**, a modern desktop interface for Windows, Linux, and macOS.
 
 ![Ratio Spoof Manager](./assets/ratio-spoof-manager-gui.png)
 
@@ -21,9 +21,9 @@ Features:
 - port and qBittorrent client-emulation controls;
 - persistent local settings and safe process shutdown.
 
-[Download the latest Windows release](https://github.com/Endymi0n74/ratio-spoof-gui/releases/latest)
+[Download the latest desktop release](https://github.com/Endymi0n74/Ratio_Spoof_Gui/releases/latest)
 
-The GUI source and reproducible Windows build script are available in [`gui/`](./gui/). The published executable is not digitally signed.
+The GUI source and reproducible platform build scripts are available in [`gui/`](./gui/). Windows and macOS packages are not digitally signed.
 
 ### Résumé en français
 

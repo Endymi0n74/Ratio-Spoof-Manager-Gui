@@ -4,7 +4,7 @@
 
 `ratio_spoof_manager.py` est une interface Tkinter pour le moteur en ligne de commande `ratio-spoof`.
 
-Fonctionnalités : journal intégré, validation des unités, port configurable, émulation qBittorrent, prévention des lancements multiples et arrêt contrôlé du moteur.
+Fonctionnalités : journal intégré, validation des unités, port configurable, émulation qBittorrent, prévention des lancements multiples et arrêt contrôlé du moteur. Des builds autonomes sont publiés pour Windows, Linux et macOS.
 
 ### Lancer depuis les sources
 
@@ -23,7 +23,15 @@ python -m pip install -r .\gui\requirements-build.txt
 .\gui\build.ps1 -RatioSpoofExecutable .\ratio-spoof.exe
 ```
 
-Le résultat est écrit dans `dist\RatioSpoofManager-Modern.exe`.
+Le résultat Windows est écrit dans `dist\RatioSpoofManager-Windows-x86_64.exe`.
+
+Sous Linux ou macOS :
+
+```bash
+python -m pip install -r ./gui/requirements-build.txt
+chmod +x ./gui/build.sh ./ratio-spoof
+./gui/build.sh ./ratio-spoof
+```
 
 ## English
 
@@ -48,7 +56,7 @@ python -m pip install -r .\gui\requirements-build.txt
 .\gui\build.ps1 -RatioSpoofExecutable .\ratio-spoof.exe
 ```
 
-The resulting file is written to `dist\RatioSpoofManager-Modern.exe`. The engine is bundled inside the manager and copied to `%LOCALAPPDATA%\RatioSpoofManager\engine` when first launched.
+The Windows build is written to `dist\RatioSpoofManager-Windows-x86_64.exe`. Linux and macOS builds use `gui/build.sh`. The engine is bundled inside the manager and copied to the platform's application-data directory when first launched.
 
 ## Accepted values
 
