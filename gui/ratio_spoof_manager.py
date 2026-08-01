@@ -25,7 +25,7 @@ COLORS = {
     "input": "#0E162A",
 }
 
-APP_VERSION = "1.2.1"
+APP_VERSION = "1.2.2"
 AMOUNT_PATTERN = re.compile(r"^\d+(?:[.,]\d+)?(?:%|b|kb|mb|gb|tb)$", re.IGNORECASE)
 SPEED_PATTERN = re.compile(r"^\d+(?:[.,]\d+)?(?:kbps|mbps)$", re.IGNORECASE)
 ANSI_ESCAPE_PATTERN = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
@@ -45,8 +45,9 @@ def normalize_parameter(value: str) -> str:
 
 def parse_terminal_output(content: str) -> tuple[bool, str]:
     """Translate terminal refresh output into an update suitable for a Tk text box."""
-    resets_screen = bool(ANSI_SCREEN_RESET_PATTERN.search(content))
-    clean_content = ANSI_ESCAPE_PATTERN.sub("", content).replace("\r", "")
+    # Windows' `cmd /c cls` writes a form-feed when stdout is redirected.
+    resets_screen = "\f" in content or bool(ANSI_SCREEN_RESET_PATTERN.search(content))
+    clean_content = ANSI_ESCAPE_PATTERN.sub("", content).replace("\f", "").replace("\r", "")
     return resets_screen, clean_content
 
 
