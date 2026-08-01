@@ -25,9 +25,11 @@ COLORS = {
     "input": "#0E162A",
 }
 
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.2.1"
 AMOUNT_PATTERN = re.compile(r"^\d+(?:[.,]\d+)?(?:%|b|kb|mb|gb|tb)$", re.IGNORECASE)
 SPEED_PATTERN = re.compile(r"^\d+(?:[.,]\d+)?(?:kbps|mbps)$", re.IGNORECASE)
+ANSI_ESCAPE_PATTERN = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+ANSI_SCREEN_RESET_PATTERN = re.compile(r"\x1b(?:c|\[(?:2J|H|f))")
 SUPPORTED_CLIENTS = ("qbit-4.0.3", "qbit-4.3.3")
 IS_WINDOWS = sys.platform == "win32"
 IS_MACOS = sys.platform == "darwin"
@@ -39,6 +41,13 @@ MONO_FONT = "Cascadia Mono" if IS_WINDOWS else ("Menlo" if IS_MACOS else "DejaVu
 def normalize_parameter(value: str) -> str:
     normalized = re.sub(r"\s+", "", value).lower().replace(",", ".")
     return normalized.replace("mpbs", "mbps").replace("kpbs", "kbps")
+
+
+def parse_terminal_output(content: str) -> tuple[bool, str]:
+    """Translate terminal refresh output into an update suitable for a Tk text box."""
+    resets_screen = bool(ANSI_SCREEN_RESET_PATTERN.search(content))
+    clean_content = ANSI_ESCAPE_PATTERN.sub("", content).replace("\r", "")
+    return resets_screen, clean_content
 
 
 def resource_path(name: str) -> Path:
@@ -400,7 +409,10 @@ class ModernRatioSpoofManager:
 
     def _append_log(self, content):
         if self.log_text and self.log_text.winfo_exists():
-            self.log_text.insert("end", content)
+            resets_screen, clean_content = parse_terminal_output(content)
+            if resets_screen:
+                self.log_text.delete("1.0", "end")
+            self.log_text.insert("end", clean_content)
             self.log_text.see("end")
 
     def _monitor_process(self):
