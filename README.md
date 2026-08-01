@@ -1,6 +1,24 @@
 # ratio-spoof
 Ratio-spoof is a cross-platform, free and open source tool to spoof the download/upload amount on private bittorrent trackers.
 
+## Windows GUI
+
+This repository also includes **Ratio Spoof Manager**, a modern Windows interface for configuring and running the command-line engine.
+
+![Ratio Spoof Manager](./assets/ratio-spoof-manager-gui.png)
+
+Features:
+
+- integrated execution log in the main window;
+- torrent and executable file pickers;
+- automatic validation and normalization of transfer values;
+- bundled-engine or custom-engine mode;
+- persistent local settings.
+
+[Download the latest Windows release](https://github.com/Endymi0n74/ratio-spoof-gui/releases/latest)
+
+The GUI source and reproducible Windows build script are available in [`gui/`](./gui/). The published executable is not digitally signed.
+
 ![](./assets/demo.gif)
 
 ## Motivation
