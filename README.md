@@ -1,4 +1,9 @@
 # ratio-spoof
+
+[![CI](https://github.com/Endymi0n74/ratio-spoof-gui/actions/workflows/ci.yml/badge.svg)](https://github.com/Endymi0n74/ratio-spoof-gui/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/Endymi0n74/ratio-spoof-gui?include_prereleases)](https://github.com/Endymi0n74/ratio-spoof-gui/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+
 Ratio-spoof is a cross-platform, free and open source tool to spoof the download/upload amount on private bittorrent trackers.
 
 ## Windows GUI
@@ -13,11 +18,19 @@ Features:
 - torrent and executable file pickers;
 - automatic validation and normalization of transfer values;
 - bundled-engine or custom-engine mode;
-- persistent local settings.
+- port and qBittorrent client-emulation controls;
+- persistent local settings and safe process shutdown.
 
 [Download the latest Windows release](https://github.com/Endymi0n74/ratio-spoof-gui/releases/latest)
 
 The GUI source and reproducible Windows build script are available in [`gui/`](./gui/). The published executable is not digitally signed.
+
+### Résumé en français
+
+Ratio Spoof Manager fournit une interface Windows pour sélectionner un torrent, régler les valeurs de transfert, choisir le port et l’émulation client, puis suivre le moteur dans un journal intégré. Consultez [`gui/README.md`](./gui/README.md) pour les instructions françaises et anglaises.
+
+> [!CAUTION]
+> Use this software only where you are authorized to do so. Artificial tracker reporting can violate tracker rules and may result in account suspension. Prefer real seeding whenever possible.
 
 ![](./assets/demo.gif)
 
