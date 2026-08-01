@@ -22,9 +22,10 @@ New-Item -ItemType Directory -Force -Path $distPath, $buildPath | Out-Null
 python -m PyInstaller `
     --noconfirm `
     --clean `
-    --onefile `
+    --onedir `
+    --noupx `
     --windowed `
-    --name "RatioSpoofManager-Windows-x86_64" `
+    --name "RatioSpoofManager" `
     --icon $iconPath `
     --version-file $versionFile `
     --add-binary "$enginePath;." `
@@ -34,4 +35,10 @@ python -m PyInstaller `
     --specpath $buildPath `
     $sourcePath
 
-Write-Host "Built: $distPath\RatioSpoofManager-Windows-x86_64.exe"
+$archivePath = Join-Path $distPath "RatioSpoofManager-Windows-x86_64.zip"
+if (Test-Path -LiteralPath $archivePath) {
+    Remove-Item -LiteralPath $archivePath -Force
+}
+Compress-Archive -LiteralPath (Join-Path $distPath "RatioSpoofManager") -DestinationPath $archivePath
+
+Write-Host "Built: $archivePath"

@@ -46,6 +46,12 @@ class TerminalOutputTests(unittest.TestCase):
         self.assertFalse(resets_screen)
         self.assertEqual(content, "Tracker announced\n")
 
+    def test_detects_windows_cls_form_feed(self):
+        resets_screen, content = parse_terminal_output("\fRATIO-SPOOF\n")
+
+        self.assertTrue(resets_screen)
+        self.assertEqual(content, "RATIO-SPOOF\n")
+
 
 if __name__ == "__main__":
     unittest.main()

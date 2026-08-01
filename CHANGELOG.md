@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.2 - 2026-08-01
+
+- handle the Windows form-feed emitted by `cls` so the live journal refreshes in place;
+- publish Windows as an unpacked portable application inside a ZIP archive;
+- disable UPX for the Windows build to reduce antivirus false positives.
+
 ## 1.2.1 - 2026-08-01
 
 - render terminal refreshes in place instead of duplicating the engine status block;

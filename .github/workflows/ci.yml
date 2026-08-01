@@ -34,7 +34,7 @@ jobs:
         include:
           - os: windows-latest
             artifact: RatioSpoofManager-Windows
-            path: dist/RatioSpoofManager-Windows-x86_64.exe
+            path: dist/RatioSpoofManager-Windows-x86_64.zip
           - os: ubuntu-latest
             artifact: RatioSpoofManager-Linux
             path: dist/RatioSpoofManager-Linux-x86_64.tar.gz
