@@ -25,7 +25,9 @@
     ],
     "security": {
       "csp": null,
-      "capabilities": ["default"]
+      "capabilities": [
+        "default"
+      ]
     }
   },
   "bundle": {
@@ -38,7 +40,11 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": ["binaries/*"],
-    "externalBin": ["binaries/ratio-spoof"]
+    "resources": [
+      "binaries/*"
+    ],
+    "externalBin": [
+      "binaries/ratio-spoof"
+    ]
   }
 }

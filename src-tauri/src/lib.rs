@@ -29,6 +29,9 @@ pub fn run() {
             commands::pick_executable,
             commands::get_presets,
             commands::validate_field,
+		.invoke_handler(tauri::generate_handler![
+// ... tes commandes existantes ...
+			save_settings
         ])
         .setup(|app| {
             #[cfg(debug_assertions)]
@@ -37,4 +40,16 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+#[tauri::command]
+fn save_settings(settings: serde_json::Value) -> Result<(), String> {
+    // TODO: ecrire dans un fichier JSON ou SQLite
+    Ok(())
 }
+
+
+
+
+
+
+
+

@@ -1,4 +1,4 @@
-# Dependencies
+﻿# Dependencies
 node_modules/
 package-lock.json
 yarn.lock
@@ -7,10 +7,11 @@ pnpm-lock.yaml
 # Build outputs
 dist/
 build/
-target/
+out/
 
 # Tauri
 src-tauri/target/
+src-tauri/Cargo.lock
 src-tauri/gen/
 
 # IDE
@@ -27,14 +28,17 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# Env
+# Environment
 .env
 .env.local
+.env.*.local
 
-# Binary (user should place their own)
-src-tauri/binaries/ratio-spoof
-src-tauri/binaries/ratio-spoof.exe
+# Testing
+coverage/
 
-# But keep the directory
-!src-tauri/binaries/.gitkeep
+# Misc
+.cache/
+.temp/

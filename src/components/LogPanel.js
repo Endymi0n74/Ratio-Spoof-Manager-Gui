@@ -4,19 +4,20 @@ export class LogPanel {
     this.session = options.session;
     this.icons = options.icons || {};
     this.filter = 'all';
-
+    this.renderedCount = 0;
+    this.entriesContainer = null;
     this.render();
   }
 
   render() {
     const logs = this.session.logs || [];
-    const filtered = this.filterLogs(logs);
+    this.renderedCount = logs.length;
 
     this.container.innerHTML = `
       <div class="log-container">
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
           <div style="font-size: 12px; font-weight: 600; color: var(--text-secondary);">
-            ${this.icons.document || ''} Journal — ${this.getTorrentName(this.session.config.torrent_path)}
+            Journal
           </div>
           <div class="log-filters">
             <button class="log-filter ${this.filter === 'all' ? 'active' : ''}" data-filter="all">Tout</button>
@@ -25,28 +26,73 @@ export class LogPanel {
             <button class="log-filter ${this.filter === 'error' ? 'active' : ''}" data-filter="error">Erreurs</button>
           </div>
         </div>
-        <div class="log-entries">
-          ${filtered.length === 0 
-            ? '<div style="color: var(--text-muted); font-size: 12px; padding: 20px; text-align: center;">Aucun log</div>'
-            : filtered.map(log => this.renderLogEntry(log)).join('')
-          }
-        </div>
+        <div class="log-entries" id="log-entries-container"></div>
       </div>
     `;
 
-    // Filter events
+    this.entriesContainer = this.container.querySelector('#log-entries-container');
+    this.renderEntries(logs);
+
     this.container.querySelectorAll('.log-filter').forEach(btn => {
       btn.addEventListener('click', () => {
         this.filter = btn.dataset.filter;
+        this.renderedCount = 0;
         this.render();
       });
     });
+  }
 
-    // Auto-scroll to bottom
-    const entries = this.container.querySelector('.log-entries');
-    if (entries) {
-      entries.scrollTop = entries.scrollHeight;
+  update(session) {
+    this.session = session;
+    const logs = session.logs || [];
+    const newLogs = logs.slice(this.renderedCount);
+
+    if (newLogs.length === 0) return;
+
+    const filtered = this.filterLogs(newLogs);
+    if (filtered.length === 0) {
+      this.renderedCount = logs.length;
+      return;
     }
+
+    // Batcher les ajouts pour eviter les reflows/repaints multiples
+    const fragment = document.createDocumentFragment();
+    filtered.forEach(log => {
+      const el = document.createElement('div');
+      el.innerHTML = this.renderLogEntry(log);
+      fragment.appendChild(el.firstElementChild);
+    });
+
+    this.entriesContainer.appendChild(fragment);
+    this.renderedCount = logs.length;
+    this.scrollToBottom();
+  }
+
+  renderEntries(logs) {
+    if (!this.entriesContainer) return;
+    const filtered = this.filterLogs(logs);
+
+    if (filtered.length === 0) {
+      this.entriesContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 12px; padding: 20px; text-align: center;">Aucun log</div>';
+      return;
+    }
+
+    this.entriesContainer.innerHTML = filtered.map(log => this.renderLogEntry(log)).join('');
+    this.scrollToBottom();
+  }
+
+  renderLogEntry(log) {
+    const time = new Date(log.timestamp).toLocaleTimeString('fr-FR', {
+      hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+
+    return `
+      <div class="log-entry">
+        <span class="log-timestamp">${time}</span>
+        <span class="log-level ${log.level}">${log.level}</span>
+        <span class="log-message">${this.escapeHtml(log.message)}</span>
+      </div>
+    `;
   }
 
   filterLogs(logs) {
@@ -59,25 +105,10 @@ export class LogPanel {
     });
   }
 
-  renderLogEntry(log) {
-    const time = new Date(log.timestamp).toLocaleTimeString('fr-FR', { 
-      hour: '2-digit', 
-      minute: '2-digit', 
-      second: '2-digit' 
-    });
-
-    return `
-      <div class="log-entry">
-        <span class="log-timestamp">${time}</span>
-        <span class="log-level ${log.level}">${log.level}</span>
-        <span class="log-message">${this.escapeHtml(log.message)}</span>
-      </div>
-    `;
-  }
-
-  getTorrentName(path) {
-    if (!path) return 'Unknown';
-    return path.split(/[\\/]/).pop() || 'Unknown';
+  scrollToBottom() {
+    if (this.entriesContainer) {
+      this.entriesContainer.scrollTop = this.entriesContainer.scrollHeight;
+    }
   }
 
   escapeHtml(text) {

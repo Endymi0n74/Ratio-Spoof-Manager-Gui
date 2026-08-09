@@ -1,6 +1,5 @@
 use anyhow::Result;
 use std::process::Stdio;
-use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::mpsc;
@@ -29,7 +28,7 @@ impl ProcessHandle {
 
         #[cfg(windows)]
         {
-            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+            cmd.creation_flags(0x08000000);
         }
 
         let mut child = cmd.spawn()?;

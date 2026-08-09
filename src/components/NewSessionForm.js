@@ -1,6 +1,12 @@
-import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { Toast } from './Toast.js';
+
+// Seuls les clients supportes par le backend ratio-spoof
+const SUPPORTED_CLIENTS = [
+  { id: 'qbit-4.0.3', name: 'qBittorrent 4.0.3' },
+  { id: 'qbit-4.3.3', name: 'qBittorrent 4.3.3' },
+  { id: 'custom',     name: 'ID personnalise...' },
+];
 
 export class NewSessionForm {
   constructor(container, options) {
@@ -12,30 +18,35 @@ export class NewSessionForm {
     this.torrentPath = '';
     this.selectedPreset = null;
     this.validationState = {};
+    this.useEmbeddedEngine = true;
 
     this.render();
     this.attachEvents();
   }
 
   render() {
+    const clientOptions = SUPPORTED_CLIENTS.map(c =>
+      `<option value="${c.id}" ${this.settings?.default_client === c.id ? 'selected' : ''}>${c.name}</option>`
+    ).join('');
+
     this.container.innerHTML = `
       <div class="presets-bar" id="presets-bar"></div>
 
       <div class="drop-zone" id="drop-zone">
         <div class="drop-zone-icon">${this.icons.upload || ''}</div>
-        <div class="drop-zone-text">Déposez un fichier .torrent</div>
+        <div class="drop-zone-text">Deposez un fichier .torrent</div>
         <div class="drop-zone-hint">ou cliquez pour parcourir</div>
       </div>
 
       <div class="file-chip hidden" id="file-chip">
         <span class="file-chip-icon">${this.icons.folder || ''}</span>
         <span class="file-chip-name" id="file-chip-name"></span>
-        <button class="file-chip-remove" id="file-chip-remove">${this.icons.close || ''}</button>
+        <button class="file-chip-remove" id="file-chip-remove">${this.icons.close || '&times;'}</button>
       </div>
 
       <div class="form-row">
         <div class="form-group">
-          <label class="form-label">Téléchargé</label>
+          <label class="form-label">Telecharge</label>
           <input type="text" class="form-input" id="field-dl" value="${this.settings?.default_downloaded || '100%'}" placeholder="ex: 100%">
           <div class="validation-feedback" id="feedback-dl"></div>
         </div>
@@ -48,7 +59,7 @@ export class NewSessionForm {
 
       <div class="form-row">
         <div class="form-group">
-          <label class="form-label">Uploadé</label>
+          <label class="form-label">Uploade</label>
           <input type="text" class="form-input" id="field-ul" value="${this.settings?.default_uploaded || '0%'}" placeholder="ex: 50%">
           <div class="validation-feedback" id="feedback-ul"></div>
         </div>
@@ -68,17 +79,17 @@ export class NewSessionForm {
         <div class="form-group">
           <label class="form-label">Client</label>
           <select class="form-select" id="field-client">
-            <option value="qbit-4.0.3" ${this.settings?.default_client === 'qbit-4.0.3' ? 'selected' : ''}>qBittorrent 4.0.3</option>
-            <option value="qbit-4.3.3" ${this.settings?.default_client === 'qbit-4.3.3' ? 'selected' : ''}>qBittorrent 4.3.3</option>
+            ${clientOptions}
           </select>
+          <input type="text" class="form-input hidden mt-3" id="field-client-custom" placeholder="Peer ID (ex: QB4650)">
         </div>
       </div>
 
       <div class="form-group mt-3">
         <label class="form-label">Moteur</label>
         <div style="display: flex; gap: 8px;">
-          <button class="btn btn-secondary" id="btn-embedded" style="flex: 1;">Intégré</button>
-          <button class="btn btn-secondary" id="btn-custom" style="flex: 1;">Personnalisé</button>
+          <button class="btn btn-secondary" id="btn-embedded" style="flex: 1;">Integre</button>
+          <button class="btn btn-secondary" id="btn-custom" style="flex: 1;">Personnalise</button>
         </div>
         <input type="text" class="form-input mt-3 hidden" id="field-engine" placeholder="Chemin vers ratio-spoof" readonly>
       </div>
@@ -96,31 +107,23 @@ export class NewSessionForm {
     if (!bar) return;
 
     bar.innerHTML = this.presets.map(p => `
-      <button class="preset-btn" data-preset="${p.id}" title="${p.description}">
+      <button class="preset-btn" data-preset="${p.id}" title="${p.description || ''}">
         ${p.name}
       </button>
     `).join('');
   }
 
   attachEvents() {
-    // Presets
     document.getElementById('presets-bar')?.addEventListener('click', (e) => {
       if (e.target.classList.contains('preset-btn')) {
-        const presetId = e.target.dataset.preset;
-        this.applyPreset(presetId);
+        this.applyPreset(e.target.dataset.preset);
       }
     });
 
-    // Drop zone
     const dropZone = document.getElementById('drop-zone');
     dropZone?.addEventListener('click', () => this.pickTorrent());
-    dropZone?.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      dropZone.classList.add('drag-over');
-    });
-    dropZone?.addEventListener('dragleave', () => {
-      dropZone.classList.remove('drag-over');
-    });
+    dropZone?.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+    dropZone?.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
     dropZone?.addEventListener('drop', (e) => {
       e.preventDefault();
       dropZone.classList.remove('drag-over');
@@ -130,43 +133,35 @@ export class NewSessionForm {
       }
     });
 
-    // File chip remove
-    document.getElementById('file-chip-remove')?.addEventListener('click', () => {
-      this.clearTorrent();
-    });
+    document.getElementById('file-chip-remove')?.addEventListener('click', () => this.clearTorrent());
 
-    // Validation on input
     ['dl', 'dl-speed', 'ul', 'ul-speed', 'port'].forEach(field => {
       const el = document.getElementById(`field-${field}`);
-      if (el) {
-        el.addEventListener('input', () => this.validateField(field));
-      }
+      if (el) el.addEventListener('input', () => this.validateField(field));
     });
 
-    // Engine buttons
+    document.getElementById('field-client')?.addEventListener('change', (e) => {
+      const customInput = document.getElementById('field-client-custom');
+      customInput?.classList.toggle('hidden', e.target.value !== 'custom');
+      if (e.target.value === 'custom') customInput?.focus();
+    });
+
     document.getElementById('btn-embedded')?.addEventListener('click', () => {
       this.useEmbeddedEngine = true;
       document.getElementById('field-engine').classList.add('hidden');
-      document.getElementById('btn-embedded').style.borderColor = 'var(--accent)';
-      document.getElementById('btn-embedded').style.color = 'var(--accent)';
-      document.getElementById('btn-custom').style.borderColor = '';
-      document.getElementById('btn-custom').style.color = '';
+      document.getElementById('btn-embedded').classList.add('active');
+      document.getElementById('btn-custom').classList.remove('active');
     });
 
     document.getElementById('btn-custom')?.addEventListener('click', () => {
       this.useEmbeddedEngine = false;
       document.getElementById('field-engine').classList.remove('hidden');
-      document.getElementById('btn-custom').style.borderColor = 'var(--accent)';
-      document.getElementById('btn-custom').style.color = 'var(--accent)';
-      document.getElementById('btn-embedded').style.borderColor = '';
-      document.getElementById('btn-embedded').style.color = '';
+      document.getElementById('btn-custom').classList.add('active');
+      document.getElementById('btn-embedded').classList.remove('active');
       this.pickEngine();
     });
 
-    // Launch
     document.getElementById('btn-launch')?.addEventListener('click', () => this.launch());
-
-    // Default to embedded
     document.getElementById('btn-embedded')?.click();
   }
 
@@ -180,25 +175,37 @@ export class NewSessionForm {
     document.getElementById('field-ul-speed').value = preset.config.ul_speed;
     document.getElementById('field-port').value = preset.config.port;
 
-    // Update active state
+    if (preset.config.client) {
+      const clientSelect = document.getElementById('field-client');
+      const customInput = document.getElementById('field-client-custom');
+      const known = SUPPORTED_CLIENTS.find(c => c.id === preset.config.client);
+      if (known && known.id !== 'custom') {
+        clientSelect.value = preset.config.client;
+        customInput?.classList.add('hidden');
+      } else {
+        clientSelect.value = 'custom';
+        customInput?.classList.remove('hidden');
+        customInput.value = preset.config.client || '';
+      }
+    }
+
     document.querySelectorAll('.preset-btn').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.preset === presetId);
     });
 
-    // Re-validate all
     ['dl', 'dl-speed', 'ul', 'ul-speed', 'port'].forEach(f => this.validateField(f));
-
-    Toast.success(`Preset "${preset.name}" appliqué`);
+    Toast.success(`Preset "${preset.name}" applique`);
   }
 
   async pickTorrent() {
     try {
-      const res = await invoke('pick_torrent');
-      if (res.success && res.data) {
-        this.setTorrent(res.data);
-      }
+      const selected = await open({ multiple: false, filters: [{ name: 'Torrent', extensions: ['torrent'] }] });
+      if (selected) this.setTorrent(selected);
     } catch (e) {
-      console.error('Pick torrent failed:', e);
+      const input = document.createElement('input');
+      input.type = 'file'; input.accept = '.torrent';
+      input.onchange = (ev) => { const f = ev.target.files[0]; if (f) this.setTorrent(f.name); };
+      input.click();
     }
   }
 
@@ -206,7 +213,7 @@ export class NewSessionForm {
     this.torrentPath = path;
     document.getElementById('drop-zone').classList.add('hidden');
     document.getElementById('file-chip').classList.remove('hidden');
-    document.getElementById('file-chip-name').textContent = path.split(/[\\/]/).pop();
+    document.getElementById('file-chip-name').textContent = path.replace(/\\/g, '/').split('/').pop();
   }
 
   clearTorrent() {
@@ -218,13 +225,9 @@ export class NewSessionForm {
 
   async pickEngine() {
     try {
-      const res = await invoke('pick_executable');
-      if (res.success && res.data) {
-        document.getElementById('field-engine').value = res.data;
-      }
-    } catch (e) {
-      console.error('Pick engine failed:', e);
-    }
+      const selected = await open({ multiple: false, filters: [{ name: 'Executable', extensions: ['exe', 'bat', 'cmd', 'sh'] }] });
+      if (selected) document.getElementById('field-engine').value = selected;
+    } catch (e) { console.error(e); }
   }
 
   async validateField(field) {
@@ -240,34 +243,34 @@ export class NewSessionForm {
       return;
     }
 
-    const type = field === 'port' ? 'port' : (field.includes('speed') ? 'speed' : 'amount');
-
-    try {
-      const res = await invoke('validate_field', { value, field_type: type });
-      if (res.success) {
-        const result = res.data;
-        el.classList.toggle('valid', result.valid);
-        el.classList.toggle('invalid', !result.valid);
-        feedback.className = `validation-feedback ${result.valid ? 'success' : 'error'}`;
-        feedback.textContent = result.valid ? '✓' : result.message;
-        this.validationState[field] = result.valid;
-      }
-    } catch (e) {
-      console.error('Validation error:', e);
+    let valid = true, msg = '';
+    if (field === 'port') {
+      const n = parseInt(value);
+      valid = !isNaN(n) && n > 0 && n <= 65535;
+      msg = valid ? 'OK' : 'Port invalide';
+    } else if (field.includes('speed')) {
+      valid = /^\d+\s*(bps|kbps|mbps|gbps)$/i.test(value);
+      msg = valid ? 'OK' : 'Format: 5mbps';
+    } else {
+      valid = /^\d+\s*(%|mb|gb|tb)?$/i.test(value) || /^\d+(\.\d+)?\s*(%|mb|gb|tb)$/i.test(value);
+      msg = valid ? 'OK' : 'Format: 100% ou 500MB';
     }
+
+    el.classList.toggle('valid', valid);
+    el.classList.toggle('invalid', !valid);
+    feedback.className = `validation-feedback ${valid ? 'success' : 'error'}`;
+    feedback.textContent = msg;
+    this.validationState[field] = valid;
   }
 
   async launch() {
     if (!this.torrentPath) {
-      Toast.error('Veuillez sélectionner un fichier .torrent');
+      Toast.error('Veuillez selectionner un fichier .torrent');
       return;
     }
 
-    // Validate all fields
     const fields = ['dl', 'dl-speed', 'ul', 'ul-speed', 'port'];
-    for (const f of fields) {
-      await this.validateField(f);
-    }
+    for (const f of fields) await this.validateField(f);
 
     const allValid = fields.every(f => this.validationState[f]);
     if (!allValid) {
@@ -275,13 +278,17 @@ export class NewSessionForm {
       return;
     }
 
-    const enginePath = this.useEmbeddedEngine 
-      ? 'ratio-spoof' 
-      : document.getElementById('field-engine').value;
-
+    const enginePath = this.useEmbeddedEngine ? 'ratio-spoof' : document.getElementById('field-engine').value;
     if (!this.useEmbeddedEngine && !enginePath) {
-      Toast.error('Veuillez sélectionner un moteur personnalisé');
+      Toast.error('Veuillez selectionner un moteur personnalise');
       return;
+    }
+
+    let clientValue = document.getElementById('field-client').value;
+    if (clientValue === 'custom') {
+      const customVal = document.getElementById('field-client-custom')?.value.trim();
+      if (!customVal) { Toast.error('Veuillez saisir un ID client'); return; }
+      clientValue = customVal;
     }
 
     const config = {
@@ -291,7 +298,7 @@ export class NewSessionForm {
       uploaded: document.getElementById('field-ul').value.trim().toLowerCase().replace(',', '.'),
       ul_speed: document.getElementById('field-ul-speed').value.trim().toLowerCase().replace(',', '.'),
       port: parseInt(document.getElementById('field-port').value),
-      client: document.getElementById('field-client').value,
+      client: clientValue,
       engine_path: enginePath,
     };
 

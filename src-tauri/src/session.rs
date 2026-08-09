@@ -3,7 +3,6 @@ use chrono::{DateTime, Local};
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::process::ProcessHandle;
@@ -102,7 +101,6 @@ impl SessionManager {
 
         self.sessions.insert(id.clone(), state);
 
-        // Build args for ratio-spoof
         let args = vec![
             "-t".to_string(), config.torrent_path,
             "-d".to_string(), config.downloaded,
@@ -131,7 +129,6 @@ impl SessionManager {
                         });
                     }
 
-                    // Read stdout
                     while let Some(line) = proc.stdout_rx.recv().await {
                         let mut s = sessions.get_mut(&id_clone).unwrap();
                         let log = parse_log_line(&line);
@@ -249,7 +246,6 @@ fn parse_log_line(line: &str) -> LogEntry {
 fn update_stats_from_log(state: &mut SessionState, log: &LogEntry) {
     let msg = &log.message;
 
-    // Try to extract speed from log (simplified parsing)
     if msg.contains("uploaded") {
         if let Some(speed) = extract_speed(msg) {
             state.current_upload_speed = speed;
@@ -261,7 +257,6 @@ fn update_stats_from_log(state: &mut SessionState, log: &LogEntry) {
         }
     }
 
-    // Update progress based on config
     if let Ok(dl_val) = parse_amount(&state.config.downloaded) {
         if let Ok(total) = parse_amount(&state.config.downloaded) {
             state.progress_percent = (dl_val / total * 100.0).min(100.0);
@@ -270,7 +265,6 @@ fn update_stats_from_log(state: &mut SessionState, log: &LogEntry) {
 }
 
 fn extract_speed(msg: &str) -> Option<f64> {
-    // Simple regex-like parsing for "X kbps" or "X mbps"
     let msg = msg.to_lowercase();
     if let Some(idx) = msg.find("kbps") {
         let before = &msg[..idx].trim();

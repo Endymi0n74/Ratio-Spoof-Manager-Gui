@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Mutex;
-use tauri::api::path::app_data_dir;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppSettings {
@@ -24,7 +23,7 @@ impl AppSettings {
     }
 
     fn settings_path() -> Option<PathBuf> {
-        app_data_dir(&Default::default()).map(|p| p.join("settings.json"))
+        dirs::data_dir().map(|p| p.join("RatioSpoofManager").join("settings.json"))
     }
 
     fn load_from_disk() -> Option<Self> {

@@ -1,10 +1,9 @@
-use crate::session::{SessionConfig, SessionManager, SessionState, LogEntry};
+﻿use crate::session::{SessionConfig, SessionManager, SessionState, LogEntry};
 use crate::settings::AppSettings;
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tauri::State;
-use tauri::api::path::app_data_dir;
-use std::path::PathBuf;
+use tauri_plugin_dialog::DialogExt;
 
 #[derive(Debug, Serialize)]
 pub struct ApiResponse<T> {
@@ -111,7 +110,7 @@ pub fn get_session_logs(
     let limit = limit.unwrap_or(100);
     match manager.get_session_logs(&id, limit) {
         Some(logs) => Ok(ApiResponse::ok(logs)),
-        None => Ok(ApiResponse::err("Session non trouvée".to_string())),
+        None => Ok(ApiResponse::err("Session not found".to_string())),
     }
 }
 
@@ -138,41 +137,26 @@ pub fn save_settings(
 
 #[tauri::command]
 pub async fn pick_torrent(
-    window: tauri::Window,
+    app: tauri::AppHandle,
 ) -> Result<ApiResponse<Option<String>>, String> {
-    use tauri::api::dialog::FileDialogBuilder;
+    let handle = app.dialog().file().add_filter("Torrent", &["torrent"]);
+    let path = tauri::async_runtime::spawn_blocking(move || {
+        handle.blocking_pick_file()
+    }).await.map_err(|e| e.to_string())?;
 
-    let (tx, rx) = tokio::sync::oneshot::channel();
-
-    FileDialogBuilder::new()
-        .add_filter("Torrent", &["torrent"])
-        .pick_file(move |path| {
-            let _ = tx.send(path.map(|p| p.to_string_lossy().to_string()));
-        });
-
-    match rx.await {
-        Ok(path) => Ok(ApiResponse::ok(path)),
-        Err(_) => Ok(ApiResponse::err("Dialog cancelled".to_string())),
-    }
+    Ok(ApiResponse::ok(path.map(|p| p.to_string())))
 }
 
 #[tauri::command]
 pub async fn pick_executable(
-    window: tauri::Window,
+    app: tauri::AppHandle,
 ) -> Result<ApiResponse<Option<String>>, String> {
-    use tauri::api::dialog::FileDialogBuilder;
+    let handle = app.dialog().file();
+    let path = tauri::async_runtime::spawn_blocking(move || {
+        handle.blocking_pick_file()
+    }).await.map_err(|e| e.to_string())?;
 
-    let (tx, rx) = tokio::sync::oneshot::channel();
-
-    FileDialogBuilder::new()
-        .pick_file(move |path| {
-            let _ = tx.send(path.map(|p| p.to_string_lossy().to_string()));
-        });
-
-    match rx.await {
-        Ok(path) => Ok(ApiResponse::ok(path)),
-        Err(_) => Ok(ApiResponse::err("Dialog cancelled".to_string())),
-    }
+    Ok(ApiResponse::ok(path.map(|p| p.to_string())))
 }
 
 #[derive(Debug, Serialize)]
@@ -198,7 +182,7 @@ pub fn get_presets() -> Result<ApiResponse<Vec<Preset>>, String> {
         Preset {
             id: "seed".to_string(),
             name: "Seed pur".to_string(),
-            description: "Upload uniquement, download terminé".to_string(),
+            description: "Upload only, download complete".to_string(),
             config: PresetConfig {
                 downloaded: "100%".to_string(),
                 dl_speed: "0kbps".to_string(),
@@ -210,7 +194,7 @@ pub fn get_presets() -> Result<ApiResponse<Vec<Preset>>, String> {
         Preset {
             id: "leech".to_string(),
             name: "Leech".to_string(),
-            description: "Download rapide, pas d'upload".to_string(),
+            description: "Fast download, no upload".to_string(),
             config: PresetConfig {
                 downloaded: "0%".to_string(),
                 dl_speed: "10mbps".to_string(),
@@ -222,7 +206,7 @@ pub fn get_presets() -> Result<ApiResponse<Vec<Preset>>, String> {
         Preset {
             id: "balanced".to_string(),
             name: "Balanced".to_string(),
-            description: "Download et upload équilibrés".to_string(),
+            description: "Balanced download and upload".to_string(),
             config: PresetConfig {
                 downloaded: "50%".to_string(),
                 dl_speed: "5mbps".to_string(),
@@ -234,7 +218,7 @@ pub fn get_presets() -> Result<ApiResponse<Vec<Preset>>, String> {
         Preset {
             id: "ratio_boost".to_string(),
             name: "Ratio boost".to_string(),
-            description: "Upload massif pour faire monter le ratio".to_string(),
+            description: "Massive upload to boost ratio".to_string(),
             config: PresetConfig {
                 downloaded: "100%".to_string(),
                 dl_speed: "0kbps".to_string(),
@@ -250,7 +234,7 @@ pub fn get_presets() -> Result<ApiResponse<Vec<Preset>>, String> {
 #[tauri::command]
 pub fn validate_field(
     value: String,
-    field_type: String,
+    #[allow(non_snake_case)] field_type: String,
 ) -> Result<ApiResponse<ValidationResult>, String> {
     let normalized = value.to_lowercase().replace(',', ".").replace(" ", "");
 
@@ -260,7 +244,7 @@ pub fn validate_field(
             if re.is_match(&normalized) {
                 ValidationResult { valid: true, message: None }
             } else {
-                ValidationResult { valid: false, message: Some("Format invalide. Utilisez %, b, kb, mb, gb ou tb".to_string()) }
+                ValidationResult { valid: false, message: Some("Invalid format. Use %, b, kb, mb, gb or tb".to_string()) }
             }
         }
         "speed" => {
@@ -268,7 +252,7 @@ pub fn validate_field(
             if re.is_match(&normalized) {
                 ValidationResult { valid: true, message: None }
             } else {
-                ValidationResult { valid: false, message: Some("Format invalide. Utilisez kbps ou mbps".to_string()) }
+                ValidationResult { valid: false, message: Some("Invalid format. Use kbps or mbps".to_string()) }
             }
         }
         "port" => {
@@ -276,10 +260,10 @@ pub fn validate_field(
                 if port > 0 {
                     ValidationResult { valid: true, message: None }
                 } else {
-                    ValidationResult { valid: false, message: Some("Le port doit être > 0".to_string()) }
+                    ValidationResult { valid: false, message: Some("Port must be > 0".to_string()) }
                 }
             } else {
-                ValidationResult { valid: false, message: Some("Port invalide".to_string()) }
+                ValidationResult { valid: false, message: Some("Invalid port".to_string()) }
             }
         }
         _ => ValidationResult { valid: true, message: None },
@@ -287,3 +271,4 @@ pub fn validate_field(
 
     Ok(ApiResponse::ok(result))
 }
+

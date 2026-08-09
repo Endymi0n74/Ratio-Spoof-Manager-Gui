@@ -26,6 +26,7 @@ dashmap = "6"
 anyhow = "1"
 thiserror = "1"
 regex = "1"
+dirs = "5"
 
 [features]
 default = ["custom-protocol"]

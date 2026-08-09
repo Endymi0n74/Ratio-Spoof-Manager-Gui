@@ -1,4 +1,4 @@
-/* ===== RESET & BASE ===== */
+﻿/* ===== RESET & BASE ===== */
 *, *::before, *::after {
   margin: 0;
   padding: 0;
@@ -800,3 +800,15 @@ html, body {
 .mt-3 { margin-top: 12px; }
 .mb-3 { margin-bottom: 12px; }
 .w-full { width: 100%; }
+
+
+/* ===== LOG PANEL WRAPPER ===== */
+.log-panel-wrapper {
+  padding: 0 24px 16px;
+  flex-shrink: 0;
+}
+
+.log-panel-wrapper .panel {
+  border-radius: 12px 12px 0 0;
+}
+
