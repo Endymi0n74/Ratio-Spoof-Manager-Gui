@@ -1,0 +1,32 @@
+[package]
+name = "ratio-spoof-manager"
+version = "2.0.0"
+description = "Modern GUI for ratio-spoof"
+authors = ["Endymi0n74"]
+license = "MIT"
+repository = "https://github.com/Endymi0n74/Ratio_Spoof_Gui"
+edition = "2021"
+rust-version = "1.70"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-notification = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+dashmap = "6"
+anyhow = "1"
+thiserror = "1"
+regex = "1"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
