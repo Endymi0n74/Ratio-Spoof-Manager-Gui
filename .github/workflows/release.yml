@@ -132,4 +132,4 @@ jobs:
             gh release create $env:TAG --title "Ratio Spoof Manager $env:TAG" --generate-notes
           }
           gh release upload $env:TAG artifacts/* --clobber
-          gh release view $env:TAG --json url,assets --jq '"\(.url)"; .assets[] | "  \(.name)  \(.size) o  \(.digest)"'
+          gh release view $env:TAG --json url,assets --jq '"\(.url)", (.assets[] | "  \(.name)  \(.size) o  \(.digest)")'
