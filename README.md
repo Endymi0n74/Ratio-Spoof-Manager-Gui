@@ -30,8 +30,8 @@ seule source de vérité du sidecar (voir [Moteur & sidecar](#moteur--sidecar)).
 
 ```bash
 # 1. Clone
-git clone https://github.com/Endymi0n74/ratio-spoof-manager-tauri.git
-cd ratio-spoof-manager-tauri
+git clone https://github.com/Endymi0n74/Ratio-Spoof-Manager-Gui.git
+cd Ratio-Spoof-Manager-Gui
 
 # 2. Dépendances
 npm install
