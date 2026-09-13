@@ -1,6 +1,7 @@
 ﻿# Dependencies
 node_modules/
-package-lock.json
+# package-lock.json est volontairement versionné : le workflow de release en a besoin
+# (`npm ci` + cache npm) et il fige exactement l'arbre installé en local.
 yarn.lock
 pnpm-lock.yaml
 

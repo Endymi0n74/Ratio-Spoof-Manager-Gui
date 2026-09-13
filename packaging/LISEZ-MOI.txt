@@ -1,0 +1,40 @@
+Ratio Spoof Manager — paquet portable Windows x64
+=================================================
+
+Contenu
+-------
+  ratio-spoof-manager.exe                          L'application (Tauri 2 + Rust)
+  binaries\ratio-spoof-x86_64-pc-windows-msvc.exe  Le moteur Go « ratio-spoof » (sidecar)
+  SHA256SUMS.txt                                   Empreintes SHA-256 des fichiers ci-dessus
+
+Utilisation
+-----------
+1. Décompressez le dossier en entier.
+2. Lancez ratio-spoof-manager.exe.
+
+Ne séparez pas l'exécutable de son sous-dossier binaries\ : c'est là que
+l'application cherche le moteur. Si le moteur est introuvable (par exemple après
+avoir déplacé l'exécutable seul), le formulaire de session accepte un chemin
+explicite via « Chemin personnalisé ».
+
+Aucune installation n'est nécessaire : ce paquet est autonome.
+
+Vérifier les empreintes
+-----------------------
+  PowerShell :  Get-FileHash .\ratio-spoof-manager.exe -Algorithm SHA256
+  Bash       :  sha256sum -c SHA256SUMS.txt
+
+Le fichier SHA256SUMS.txt liste les chemins relatifs au dossier du paquet.
+
+Le moteur
+---------
+Le sidecar provient de la release du dépôt dédié du moteur, où il est construit
+et publié par target triple : https://github.com/Endymi0n74/ratio-spoof
+Il est récupéré tel quel (mêmes octets) et son empreinte SHA-256 est vérifiée
+avant chaque build.
+
+Avertissement
+-------------
+N'utilisez ce logiciel que là où vous y êtes autorisé. Déclarer des volumes
+téléchargés/envoyés artificiels peut violer les règles d'un tracker privé et
+entraîner la suspension du compte. Préférez le seed réel dès que possible.

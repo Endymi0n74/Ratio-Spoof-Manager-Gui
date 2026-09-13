@@ -56,6 +56,8 @@ en place et conforme, plus aucun accès réseau n'est nécessaire pour rebuild.
 | `src-tauri/` | Backend Rust (Tauri 2) et sidecar téléchargé (`src-tauri/binaries/`, non versionné) |
 | `scripts/fetch-engine.mjs` | Téléchargement du sidecar depuis la release du moteur, avec vérification d'empreinte |
 | `engine.lock.json` | Épinglage : dépôt + tag du moteur, nom et SHA-256 de l'asset de chaque cible |
+| `.github/workflows/release.yml` | Release : build de l'exécutable, assemblage du paquet portable, publication des assets |
+| `packaging/LISEZ-MOI.txt` | Mode d'emploi placé dans le paquet portable |
 | `memory.md` | Mémoire du projet : architecture, cycle de vie du moteur, limites connues |
 
 ## Moteur & sidecar
@@ -90,6 +92,43 @@ dans le dépôt moteur, réinstaller chaque cible (`--force`) puis ré-épingler
 Pour développer le moteur en local, `RATIO_SPOOF_ENGINE_BIN=<chemin>` installe un binaire construit
 à la main à la place de l'asset — l'empreinte n'est alors pas vérifiée, mais elle est affichée pour
 ré-épinglage.
+
+## Release et paquet portable
+
+Un tag `v*` déclenche [`.github/workflows/release.yml`](.github/workflows/release.yml) (Windows x64,
+sans installateur) : `npm ci` → `engine:fetch` (sidecar vérifié) → `npm run tauri build -- --no-bundle`
+→ assemblage du paquet → publication. Le workflow refuse de continuer si la version du tag ne
+correspond pas à celle de `package.json`, sinon l'archive porterait un numéro de version faux.
+
+Quatre assets sont publiés :
+
+| Asset | Rôle |
+|-------|------|
+| `ratio-spoof-manager-v<version>-windows-x64-portable.zip` | Le paquet prêt à l'emploi (voir ci-dessous) |
+| `ratio-spoof-manager.exe` | L'exécutable seul |
+| `ratio-spoof-x86_64-pc-windows-msvc.exe` | Le sidecar seul (asset du moteur, repris tel quel) |
+| `SHA256SUMS.txt` | Empreintes des trois fichiers ci-dessus |
+
+Contenu de l'archive, qui se décompresse et se lance sans installation :
+
+```
+ratio-spoof-manager-v2.0.0-windows-x64/
+├─ ratio-spoof-manager.exe
+├─ binaries/
+│  └─ ratio-spoof-x86_64-pc-windows-msvc.exe   # trouvé automatiquement par l'application
+├─ LISEZ-MOI.txt
+└─ SHA256SUMS.txt                              # empreintes relatives au dossier
+```
+
+Reconstruire les assets d'un tag existant sans en créer un nouveau :
+
+```bash
+gh workflow run release.yml -f tag=v2.0.0        # build le réf courant (master)
+gh workflow run release.yml --ref v2.0.0 -f tag=v2.0.0   # reconstruction fidèle du tag
+```
+
+Les assets sont remplacés (`gh release upload --clobber`) : relancer le workflow sur un tag déjà
+publié met la release à jour au lieu d'échouer.
 
 ## Architecture
 

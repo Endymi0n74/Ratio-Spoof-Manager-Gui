@@ -1,0 +1,135 @@
+name: Release
+
+# Produit le paquet portable Windows x64 (exécutable + sidecar rangé dans binaries/
+# + SHA256SUMS) et publie les assets de la release. Un tag v* déclenche la chaîne
+# complète ; le déclenchement manuel sert à (re)construire les assets d'un tag
+# existant : il build le réf sur lequel il est lancé (`--ref master` par défaut,
+# `--ref <tag>` pour une reconstruction fidèle du tag).
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag de la release à (re)construire (ex. v2.0.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  portable:
+    name: paquet portable windows-x64
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Dépendances front
+        run: npm ci
+
+      - name: Sidecar (release du moteur, empreinte vérifiée)
+        run: npm run engine:fetch
+
+      - name: Exécutable (sans installateur WiX/NSIS)
+        run: npm run tauri build -- --no-bundle
+
+      - name: Assembler le paquet portable
+        shell: pwsh
+        env:
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $tag = $env:TAG
+          $version = $tag.TrimStart("v")
+
+          # Le tag doit correspondre à la version déclarée, sinon l'archive porterait
+          # un numéro de version faux.
+          $declared = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ($declared -ne $version) {
+            throw "Version incohérente : tag $tag mais package.json $declared"
+          }
+
+          $name = "ratio-spoof-manager-v$version-windows-x64"
+          $stage = "portable/$name"
+          $binDir = "$stage/binaries"
+          New-Item -ItemType Directory -Force -Path $binDir | Out-Null
+          New-Item -ItemType Directory -Force -Path "artifacts" | Out-Null
+
+          Copy-Item "src-tauri/target/release/ratio-spoof-manager.exe" "$stage/"
+          Copy-Item "src-tauri/binaries/ratio-spoof-x86_64-pc-windows-msvc.exe" "$binDir/"
+          if (Test-Path "packaging/LISEZ-MOI.txt") {
+            Copy-Item "packaging/LISEZ-MOI.txt" "$stage/"
+          } else {
+            Write-Warning "packaging/LISEZ-MOI.txt absent de ce réf : le paquet n'aura pas de mode d'emploi."
+          }
+
+          # Empreintes du contenu du paquet (chemins relatifs, fins de ligne LF pour
+          # que `sha256sum -c` fonctionne aussi sous Linux/macOS).
+          function Write-Checksums($root, $target) {
+            $base = (Resolve-Path $root).Path
+            $lines = Get-ChildItem $root -Recurse -File | ForEach-Object {
+              $rel = $_.FullName.Substring($base.Length + 1).Replace("\", "/")
+              $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+              "$hash  $rel"
+            }
+            [System.IO.File]::WriteAllText($target, (($lines -join "`n") + "`n"), (New-Object System.Text.UTF8Encoding($false)))
+          }
+
+          Write-Checksums $stage "$stage/SHA256SUMS.txt"
+
+          $zip = "artifacts/$name-portable.zip"
+          Compress-Archive -Path $stage -DestinationPath $zip -Force
+          Write-Host "Archive : $zip"
+          Get-ChildItem $stage -Recurse -File | Select-Object -ExpandProperty FullName
+
+          # Assets de la release : les deux binaires bruts (comme avant) + l'archive.
+          Copy-Item "src-tauri/target/release/ratio-spoof-manager.exe" "artifacts/"
+          Copy-Item "src-tauri/binaries/ratio-spoof-x86_64-pc-windows-msvc.exe" "artifacts/"
+
+          $releaseFiles = @(
+            "ratio-spoof-manager.exe",
+            "ratio-spoof-x86_64-pc-windows-msvc.exe",
+            (Split-Path $zip -Leaf)
+          )
+          $lines = foreach ($file in $releaseFiles) {
+            $hash = (Get-FileHash "artifacts/$file" -Algorithm SHA256).Hash.ToLower()
+            "$hash  $file"
+          }
+          [System.IO.File]::WriteAllText("artifacts/SHA256SUMS.txt", (($lines -join "`n") + "`n"), (New-Object System.Text.UTF8Encoding($false)))
+          Get-Content "artifacts/SHA256SUMS.txt"
+
+      - name: Publier la release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          gh release view $env:TAG --json tagName *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release $env:TAG déjà publiée : remplacement des assets."
+          } else {
+            gh release create $env:TAG --title "Ratio Spoof Manager $env:TAG" --generate-notes
+          }
+          gh release upload $env:TAG artifacts/* --clobber
+          gh release view $env:TAG --json url,assets --jq '"\(.url)"; .assets[] | "  \(.name)  \(.size) o  \(.digest)"'
