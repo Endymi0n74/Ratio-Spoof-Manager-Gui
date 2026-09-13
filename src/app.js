@@ -91,7 +91,14 @@ class App {
         if (persisted.sessions && persisted.timestamp) {
           const age = Date.now() - persisted.timestamp;
           if (age < 24 * 60 * 60 * 1000) {
-            this.sessions = persisted.sessions;
+            // Les moteurs ne survivent pas à l'application (job « kill on close »
+            // + arrêt à la fermeture) : une session restaurée ne peut pas être
+            // encore vivante. La restaurer « En cours » créait des fantômes qui
+            // tournaient pour toujours et refusaient de se supprimer.
+            this.sessions = persisted.sessions.map(s => ({
+              ...s,
+              status: typeof s.status === 'string' && s.status !== 'stopped' ? 'stopped' : s.status,
+            }));
             this._lastBackendUpdate = persisted.lastBackendUpdate;
           }
         }
@@ -567,6 +574,7 @@ class App {
           icons: ICONS,
           onSelect: (id) => this.selectSession(id),
           onStop: (id) => this.handleStop(id),
+          onDelete: (id) => this.handleDelete(id),
           onPause: (id) => this.handlePause(id),
           onResume: (id) => this.handleResume(id),
           isSelected: session.id === this.selectedSessionId,
@@ -646,10 +654,40 @@ class App {
     try {
       const res = await invoke('stop_session', { id });
       if (res.success) {
-        Toast.success('Session arretee');
-        await notify('RSM', 'Session arretee');
-        if (this.selectedSessionId === id) this.selectedSessionId = null;
+        // La carte reste affichée en « Arrete » : supprimer est une action
+        // distincte (bouton ✕). Pas de notification ici, l'état de la carte
+        // suffit et un arrêt en deux temps ne doit pas empiler les toasts.
         await this.refreshSessions();
+      }
+    } catch (e) { Toast.error(e.message); }
+  }
+
+  async handleDelete(id) {
+    try {
+      const res = await invoke('delete_session', { id });
+      if (res.success) {
+        if (this.selectedSessionId === id) this.selectedSessionId = null;
+        // Retrait immédiat de la carte : sans cela elle resterait affichée
+        // jusqu'au prochain rafraîchissement, et un backend qui ne connaît plus
+        // la session ne la renverra jamais.
+        const card = this.sessionCards.get(id);
+        if (card) {
+          if (this._intersectionObserver) {
+            const chartWrap = card.element.querySelector('.session-chart-wrap');
+            if (chartWrap) this._intersectionObserver.unobserve(chartWrap);
+          }
+          card.element.remove();
+          this.sessionCards.delete(id);
+          this._sessionHashes.delete(id);
+        }
+        this.sessions = this.sessions.filter(s => s.id !== id);
+        this.updateStats();
+        this.persistSessions();
+        this.renderSessions();
+        if (this.selectedSessionId === null) this.renderLogPanel();
+        Toast.info('Session supprimee');
+      } else {
+        Toast.error(res.error || 'Echec de la suppression');
       }
     } catch (e) { Toast.error(e.message); }
   }
@@ -694,6 +732,9 @@ class App {
           }
           this._lastBackendUpdate = latest ? new Date(latest).toISOString() : new Date().toISOString();
         }
+        // Fusion delta : la liste ne renvoie que les sessions modifiées, donc
+        // on conserve celles absentes de la réponse. Une session supprimée ne
+        // peut pas ressusciter : handleDelete la retire aussi de this.sessions.
         const merged = new Map(prevSessions.map(s => [s.id, s]));
         for (const s of newData) {
           merged.set(s.id, s);

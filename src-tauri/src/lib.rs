@@ -17,6 +17,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::launch_session,
             commands::stop_session,
+            commands::delete_session,
             commands::pause_session,
             commands::resume_session,
             commands::get_sessions,

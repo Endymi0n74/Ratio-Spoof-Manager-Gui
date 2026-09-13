@@ -283,6 +283,35 @@ impl SessionManager {
         Ok(())
     }
 
+    /// Supprime une session : tue son moteur s'il vit encore, puis retire
+    /// l'état de la carte et des listes.
+    ///
+    /// Le bouton « supprimer » n'apparaît que sur une carte arrêtée, mais la
+    /// commande reste défensive : un moteur encore vivant (session en pause ou
+    /// démarrage en cours) est tué sans ménagement — supprimer est une action
+    /// explicite de destruction, l'arrêt propre reste le rôle du bouton Arrêter.
+    pub fn delete_session(&self, id: &str) -> Result<()> {
+        // La tâche de lecture est annulée avant toute autre opération : une fois
+        // l'état retiré, ses `get_mut().unwrap()` ne doivent plus jamais être
+        // atteints. Son `Child` est lâché à cette occasion et `kill_on_drop`
+        // tue alors le moteur s'il vivait encore.
+        if let Some((_, handle)) = self.processes.remove(id) {
+            handle.abort();
+        }
+        if let Some(pid) = self.pids.get(id).map(|entry| *entry.value()) {
+            self.pids.remove(id);
+            if let Err(e) = force_kill(pid) {
+                // Déjà sorti tout seul entre le retrait de la tâche et ici :
+                // rien à tuer, ce n'est pas un échec de la suppression.
+                eprintln!("moteur déjà absent lors de la suppression (pid {pid}) : {e}");
+            }
+        }
+        self.sessions
+            .remove(id)
+            .map(|_| ())
+            .ok_or_else(|| anyhow!("session inconnue : {id}"))
+    }
+
     /// Tue le moteur immédiatement (signal refusé par le système).
     fn kill_now(&self, id: &str, pid: u32) {
         match force_kill(pid) {
@@ -748,6 +777,28 @@ mod tests {
             progress_percent: 0.0,
             elapsed_seconds: 0,
         }
+    }
+
+    /// Supprimer doit retirer la session des listes : une commande qui ne fait
+    /// qu'effacer le statut laisserait la carte à l'écran pour toujours.
+    #[test]
+    fn delete_removes_the_session_and_fails_on_unknown_id() {
+        let manager = SessionManager::new();
+        manager
+            .sessions
+            .insert("s1".to_string(), session_with_id("s1"));
+
+        manager
+            .delete_session("s1")
+            .expect("supprimer une session existante doit réussir");
+        assert!(
+            !manager.sessions.contains_key("s1"),
+            "la session supprimée ne doit plus apparaître"
+        );
+        assert!(
+            manager.delete_session("s1").is_err(),
+            "supprimer une session inconnue doit échouer"
+        );
     }
 
     /// La perte de la garantie anti-orphelin ne peut pas se contenter d'une

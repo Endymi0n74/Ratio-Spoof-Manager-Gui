@@ -74,6 +74,17 @@ pub fn stop_session(
 }
 
 #[tauri::command]
+pub fn delete_session(
+    id: String,
+    manager: State<'_, SessionManager>,
+) -> Result<ApiResponse<()>, String> {
+    match manager.delete_session(&id) {
+        Ok(_) => Ok(ApiResponse::ok(())),
+        Err(e) => Ok(ApiResponse::err(e.to_string())),
+    }
+}
+
+#[tauri::command]
 pub fn pause_session(
     id: String,
     manager: State<'_, SessionManager>,

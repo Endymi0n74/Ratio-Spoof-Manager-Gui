@@ -6,6 +6,7 @@ export class SessionCard {
     this.icons = options.icons || {};
     this.onSelect = options.onSelect;
     this.onStop = options.onStop;
+    this.onDelete = options.onDelete;
     this.onPause = options.onPause;
     this.onResume = options.onResume;
     this.isSelected = options.isSelected || false;
@@ -114,6 +115,10 @@ export class SessionCard {
     this.element.querySelector('.btn-stop')?.addEventListener('click', (e) => {
       e.stopPropagation();
       this.onStop?.(this.session.id);
+    });
+    this.element.querySelector('.btn-delete')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.onDelete?.(this.session.id);
     });
     this.element.querySelector('.btn-pause')?.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -228,7 +233,7 @@ export class SessionCard {
       `;
     } else {
       return `
-        <button class="btn-icon danger btn-stop" title="Supprimer">&#10005;</button>
+        <button class="btn-icon danger btn-delete" title="Supprimer">&#10005;</button>
       `;
     }
   }
