@@ -14,6 +14,11 @@ src-tauri/target/
 src-tauri/Cargo.lock
 src-tauri/gen/
 
+# Sidecar : téléchargé depuis la release du moteur (scripts/fetch-engine.mjs + engine.lock.json),
+# jamais versionné ici — le dépôt moteur en est la seule source de vérité.
+src-tauri/binaries/*
+!src-tauri/binaries/.gitkeep
+
 # IDE
 .vscode/
 .idea/

@@ -2,7 +2,7 @@
 
 - **Chemin :** `D:\Codex\ratio-spoof-manager-tauri`
 - **Version :** 2.0.0 (`package.json`, `src-tauri/tauri.conf.json`)
-- **Quoi :** GUI desktop (**Tauri 2 + Rust + HTML/CSS/JS/Vite**) pour `ratio-spoof`, le spoofeur de ratio Real-Debrid. Rewrite de l'interface Tkinter d'origine (`engine/gui/ratio_spoof_manager.py`).
+- **Quoi :** GUI desktop (**Tauri 2 + Rust + HTML/CSS/JS/Vite**) pour `ratio-spoof`, le spoofeur de ratio Real-Debrid. Rewrite de l'interface Tkinter d'origine (GUI Python historique, dont le `CHANGELOG.md` est archivé dans le dépôt moteur).
 - **Doc principale :** [`README.md`](README.md)
 
 ---
@@ -13,15 +13,17 @@
 |---|---|
 | `src/` | Frontend (vite, JS vanilla) — `app.js`, `components/` (`NewSessionForm`, `SessionCard`, `LogPanel`, `Toast`, `SpeedChart`, `worker.js`) |
 | `src-tauri/src/` | Backend Rust — `lib.rs`, `commands.rs` (IPC), `session.rs` (SessionManager), `process.rs` (spawn/signal/job), `settings.rs` |
-| `src-tauri/binaries/` | Sidecar Go embarqué (`ratio-spoof-x86_64-pc-windows-msvc.exe`) |
-| `engine/` | **Moteur Go** (`ratio-spoof`), version corrigée (voir § Moteur) |
-| `.cache/` | Outils et sauvegardes locaux, **ignoré par Git** (Go portable, ancien sidecar) |
+| `src-tauri/binaries/` | Sidecar Go **téléchargé** (`ratio-spoof-<target-triple>[.exe]`), **non versionné** (seul `.gitkeep` est suivi) |
+| `scripts/fetch-engine.mjs` + `engine.lock.json` | Récupération du sidecar depuis la release du dépôt moteur (tag + SHA-256 épinglés) |
+| `.cache/` | Outils et sauvegardes locaux, **ignoré par Git** (Go portable utilisé pour le dépôt moteur) |
 
 ## Dépôt
 
+- **Dépôt moteur (source de vérité du sidecar) :** <https://github.com/Endymi0n74/ratio-spoof> — créé le 13/09/2026, historique repris de `engine/` via `git subtree split -P engine`, CI + workflow de release, release courante `v1.9.1`.
 - **GitHub :** <https://github.com/Endymi0n74/ratio-spoof-manager-tauri> — **renommé le 13/09/2026** (il s'appelait `Ratio_Spoof_Gui`), branche unique `master`, aucun tag ni release.
 - `origin` du dépôt local pointe sur ce nom ; l'ancienne adresse est redirigée par GitHub.
-- Historique : le `master` d'origine (96 commits — moteur ratio-spoof depuis 2023 + GUI Python) a été écrasé par un push forcé le 13/09/2026, à la demande. Le contenu du moteur est conservé dans `engine/`, les tags et la release `gui-v1.2.3` ont été supprimés ensuite.
+- Historique : le `master` d'origine (96 commits — moteur ratio-spoof depuis 2023 + GUI Python) a été écrasé par un push forcé le 13/09/2026, à la demande. Le moteur vit depuis dans le dépôt `Endymi0n74/ratio-spoof` (historique repris par `git subtree split`), les tags et la release `gui-v1.2.3` ont été supprimés ensuite. Il subsiste un tag local `v2.0.0` (créé pour cette interface) qui n'a jamais été poussé.
+- **Ce dépôt ne contient plus que l'interface** : aucun code Go, aucun binaire versionné.
 
 ## Build & vérifications
 
@@ -35,19 +37,15 @@ cd src-tauri && cargo clippy --all-targets
 ```
 
 - **Toolchain Rust :** 1.97 (MSRV déclaré 1.70).
-- **Toolchain Go :** 1.20.14, version épinglée par `engine/.github/workflows/ci.yml`. Comme Go n'est pas installé sur la machine, une copie **portable locale au projet** vit dans `.cache/go/` (ignoré par Git) : `GOOS=windows GOARCH=amd64 .cache/go/bin/go build ./...`.
+- **Toolchain Go :** 1.20.14, version épinglée par le workflow CI du dépôt moteur. Go **n'est plus requis pour construire l'interface** (le sidecar est téléchargé) ; il ne sert qu'à travailler sur le moteur, et comme Go n'est pas installé sur la machine, une copie **portable locale au projet** vit dans `.cache/go/` (ignoré par Git) : `CGO_ENABLED=0 GOOS=windows GOARCH=amd64 ../ratio-spoof-manager-tauri/.cache/go/bin/go build ./...` depuis le dépôt moteur.
 
-## Moteur (engine/) et sidecar
+## Moteur et sidecar — une seule source de vérité (13/09/2026)
 
-- `engine/` est la **version corrigée** du dépôt `Ratio_Spoof_Gui` (7 correctifs d'audit : fuite de connexions tracker, `Notify` bufferisé, `Run() error`, erreurs enveloppées `%w`, lint, vérification de `crypto/rand`, renommage des champs `HttpTracker`), vérifiée par `go build`, `go vet`, `go test ./...` (7 packages) et un test de non-régression sur la fermeture du corps HTTP.
-Le dossier `engine/` ne contient plus que le moteur Go : la GUI Python d'origine (`engine/gui/`), les images du README et le workflow CI (`engine/.github/`, jamais exécuté depuis un sous-dossier) ont été retirés le 13/09/2026. `engine/CHANGELOG.md` reste comme archive des releases de la GUI historique.
-
-- **Reconstruire le sidecar** après toute modification du moteur :
-  ```bash
-  cd engine && GOOS=windows GOARCH=amd64 ../.cache/go/bin/go build \
-      -o ../src-tauri/binaries/ratio-spoof-x86_64-pc-windows-msvc.exe .
-  ```
-  Le binaire livré : 7 830 528 o, md5 `b74a8b32a95b3af2d65c8d55b3c6b442`. L'ancien binaire de 2021 est archivé dans `.cache/old-sidecar/`.
+- Le moteur Go vit dans un **dépôt dédié** : <https://github.com/Endymi0n74/ratio-spoof>. C'est le fork corrigé (7 correctifs d'audit : fuite de connexions tracker, `Notify` bufferisé, `Run() error`, erreurs enveloppées `%w`, lint, vérification de `crypto/rand`, renommage des champs `HttpTracker`), vérifié par `go vet`, `go test ./...` (7 packages) et un test de non-régression sur la fermeture du corps HTTP. Son historique est celui de l'ancien `engine/`, repris par `git subtree split -P engine` (2 commits) ; il a reçu une CI (`go vet` + `go test`, Go 1.20.14) et un workflow de release. `CHANGELOG.md` y conserve l'archive des releases de la GUI Python historique.
+- Une release publie **un asset par cible**, nommé exactement comme Tauri attend un `externalBin` (`ratio-spoof-<target-triple>[.exe]`) plus `SHA256SUMS` : `x86_64-pc-windows-msvc`, `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-apple-darwin`, `aarch64-apple-darwin`. Builds en `-trimpath -buildvcs=false` (ni chemin local ni état VCS dans le binaire ; en revanche un build local Windows et la CI Linux ne donnent pas les mêmes octets — c'est le SHA-256 épinglé qui garantit l'intégrité). Release courante : **`v1.9.1`** (poussée le 13/09/2026, tag → workflow → 5 assets + `SHA256SUMS`).
+- Côté interface, **plus aucune source ni binaire versionné** : `engine/` a été supprimé (`git rm -r engine`) et `src-tauri/binaries/*` est ignoré par Git (seul `.gitkeep` est suivi). `engine.lock.json` épingle le dépôt, le tag et le SHA-256 de chaque asset ; `scripts/fetch-engine.mjs` (sans aucune dépendance) télécharge, vérifie puis installe le binaire de la cible courante. Appelé par `beforeDevCommand`/`beforeBuildCommand`, et utilisable seul : `npm run engine:fetch` / `engine:check` / `engine:update-lock`, `--force`, `--offline`.
+- **Résolution du triple** dans cet ordre : `--target` → `RATIO_SPOOF_TARGET` → `TAURI_ENV_TARGET_TRIPLE` (posé par le CLI Tauri pour les hooks) → `rustc -vV` → plateforme de Node. Empreinte divergente = **build arrêté** avec l'attendu et l'obtenu ; `--offline` interdit le réseau quand le binaire est déjà conforme. Développement du moteur : `RATIO_SPOOF_ENGINE_BIN=<chemin>` installe un binaire local (empreinte affichée mais non vérifiée).
+- **Publier une nouvelle version du moteur** : tag `vX.Y.Z` sur le dépôt moteur (le workflow construit et publie), puis côté interface `npm run engine:fetch -- --target=<triple> --force` et `npm run engine:update-lock -- --target=<triple>` pour chaque cible, et mise à jour du `tag` dans `engine.lock.json`.
 - **Résolution du sidecar** (`process.rs::resolve_engine_path`) : chemin explicite si fourni ; sinon nom nu (`ratio-spoof`) cherché à côté de l'exécutable, puis dans `<exe>/binaries`, `<exe>/../Resources/binaries` (macOS), dans `src-tauri/binaries` (développement), et enfin dans le `PATH`. Le nom suffixé par le triplet de la cible est accepté sans coder le triplet en dur.
 
 ## Cycle de vie du moteur — le point sensible
@@ -77,5 +75,5 @@ Détail Windows : `GenerateConsoleCtrlEvent` **renvoie succès même quand rien 
 - La **cross-compilation complète** du crate pour Linux n'est pas vérifiable ici (sysroot GTK absent) ; le module Unix isolé a été compilé pour `x86_64-unknown-linux-gnu` via un `rustc` ciblé.
 - `cargo clippy` conserve un avertissement **préexistant** (`manual Range::contains` dans `extract_ratio`, `session.rs`).
 - Le parsing des stats repose sur des heuristiques textuelles (`extract_speed`, `extract_ratio`…) appliquées aux lignes du moteur : à revoir si le format de sortie de `printer.go` change.
-- Fichiers volontairement **non versionnés** : `.cache/` (outils locaux), `dist/` (bundle Vite), `node_modules/`, `src-tauri/target/`.
-- **Nettoyage du 13/09/2026 :** ~6,5 Go libérés (`node_modules/`, `src-tauri/target/`, ancien sidecar de 2021, archive de l'historique écrasé, `rsm_ultra.zip`). Seul le **Go portable** est conservé dans `.cache/go` (Go n'est pas installé sur la machine) : sans lui, pas de reconstruction du sidecar.
+- Fichiers volontairement **non versionnés** : `.cache/` (outils locaux), `dist/` (bundle Vite), `node_modules/`, `src-tauri/target/`, `src-tauri/binaries/*` (sidecar téléchargé).
+- **Nettoyage du 13/09/2026 :** ~6,5 Go libérés (`node_modules/`, `src-tauri/target/`, ancien sidecar de 2021, archive de l'historique écrasé, `rsm_ultra.zip`), puis ~400 Ko de sources moteur retirées de ce dépôt (déménagées dans `Endymi0n74/ratio-spoof`). Seul le **Go portable** est conservé dans `.cache/go` (Go n'est pas installé sur la machine) : il sert désormais à construire le dépôt moteur, pas l'interface.

@@ -1,0 +1,28 @@
+{
+  "$comment": "Épinglage du sidecar. Le dépôt moteur (repository) est la source de vérité : ce dépôt ne versionne ni ses sources ni un binaire. Pour changer de version : mettre à jour tag, puis réinstaller chaque cible (node scripts/fetch-engine.mjs --target=<triple> --force) et ré-épingler l'empreinte (--update-lock).",
+  "repository": "Endymi0n74/ratio-spoof",
+  "tag": "v1.9.1",
+  "checksumsAsset": "SHA256SUMS",
+  "assets": {
+    "x86_64-pc-windows-msvc": {
+      "name": "ratio-spoof-x86_64-pc-windows-msvc.exe",
+      "sha256": "7c44d54106eed570d1ecb09cb3e7fcdfbbf9e1c28f27cce25d8cda818e234928"
+    },
+    "x86_64-unknown-linux-gnu": {
+      "name": "ratio-spoof-x86_64-unknown-linux-gnu",
+      "sha256": "2e9405d1e40d007ba8262d7bb647ad1ff0127cae2097677e98d60085823fb779"
+    },
+    "aarch64-unknown-linux-gnu": {
+      "name": "ratio-spoof-aarch64-unknown-linux-gnu",
+      "sha256": "067b6c8b0ced247276a52100f817f86e9f6686b85489a1a9983112a8f020a5c4"
+    },
+    "x86_64-apple-darwin": {
+      "name": "ratio-spoof-x86_64-apple-darwin",
+      "sha256": "e9e63db14e5ae3a72841e792ce09108f330cf42f75c6e579bee8a945b4583f1f"
+    },
+    "aarch64-apple-darwin": {
+      "name": "ratio-spoof-aarch64-apple-darwin",
+      "sha256": "978485f501946e96acc45d0afaec5af8f0a0adc39cdeec5a34f145268873cd11"
+    }
+  }
+}

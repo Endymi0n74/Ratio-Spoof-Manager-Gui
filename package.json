@@ -9,7 +9,10 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "engine:fetch": "node scripts/fetch-engine.mjs",
+    "engine:check": "node scripts/fetch-engine.mjs --check",
+    "engine:update-lock": "node scripts/fetch-engine.mjs --update-lock"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.0.0",

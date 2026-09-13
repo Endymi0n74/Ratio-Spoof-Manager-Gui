@@ -529,7 +529,7 @@ pub fn resolve_engine_path(requested: &str) -> Result<PathBuf> {
         "moteur embarqué « {requested} » introuvable ; emplacements essayés : {searched}, puis le PATH"
     );
     bail!(
-        "moteur embarqué « {requested} » introuvable : aucun sidecar à côté de l'application, dans ses ressources, ni dans le dépôt. Reconstruisez-le depuis engine/ ou choisissez « Chemin personnalisé »."
+        "moteur embarqué « {requested} » introuvable : aucun sidecar à côté de l'application, dans ses ressources, ni dans le dépôt. Récupérez-le avec « npm run engine:fetch » ou choisissez « Chemin personnalisé »."
     )
 }
 

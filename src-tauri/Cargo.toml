@@ -4,7 +4,7 @@ version = "2.0.0"
 description = "Modern GUI for ratio-spoof"
 authors = ["Endymi0n74"]
 license = "MIT"
-repository = "https://github.com/Endymi0n74/Ratio_Spoof_Gui"
+repository = "https://github.com/Endymi0n74/ratio-spoof-manager-tauri"
 edition = "2021"
 rust-version = "1.70"
 

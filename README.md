@@ -2,6 +2,10 @@
 
 Interface desktop moderne pour [ratio-spoof](https://github.com/ap-pauloafonso/ratio-spoof), migrée de Tkinter vers Tauri (Rust + Web).
 
+Le moteur Go n'est **pas** embarqué sous forme de sources ni de binaire versionné : il est
+téléchargé depuis la release du dépôt dédié [Endymi0n74/ratio-spoof](https://github.com/Endymi0n74/ratio-spoof),
+seule source de vérité du sidecar (voir [Moteur & sidecar](#moteur--sidecar)).
+
 ![Version](https://img.shields.io/badge/version-2.0.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -20,7 +24,7 @@ Interface desktop moderne pour [ratio-spoof](https://github.com/ap-pauloafonso/r
 
 - [Rust](https://rustup.rs/) (1.70+)
 - [Node.js](https://nodejs.org/) 20+
-- [Go](https://go.dev/dl/) 1.20+ — utile seulement pour reconstruire le moteur ; le sidecar compilé est déjà versionné dans `src-tauri/binaries/`
+- Accès réseau au premier build — le sidecar est récupéré depuis la release du moteur ; [Go](https://go.dev/dl/) 1.20+ n'est nécessaire que pour travailler sur le moteur lui-même
 
 ## Installation
 
@@ -39,21 +43,53 @@ npm run tauri dev
 npm run tauri build -- --no-bundle
 ```
 
-Rien à copier pour lancer l'application : le sidecar est embarqué. Pour le **reconstruire** après une modification du moteur :
-
-```bash
-cd engine && GOOS=windows GOARCH=amd64 go build \
-    -o ../src-tauri/binaries/ratio-spoof-x86_64-pc-windows-msvc.exe .
-```
+Rien à copier à la main : `tauri dev` et `tauri build` exécutent `npm run engine:fetch`
+(`beforeDevCommand` / `beforeBuildCommand`), qui télécharge le sidecar de la cible courante
+dans `src-tauri/binaries/` après vérification de son empreinte SHA-256. Une fois le fichier
+en place et conforme, plus aucun accès réseau n'est nécessaire pour rebuild.
 
 ## Structure du dépôt
 
 | Chemin | Rôle |
 |--------|------|
 | `src/` | Interface (JS vanilla, composants, styles) |
-| `src-tauri/` | Backend Rust (Tauri 2) et sidecar embarqué |
-| `engine/` | Moteur Go `ratio-spoof` (source, tests, `Makefile`) |
+| `src-tauri/` | Backend Rust (Tauri 2) et sidecar téléchargé (`src-tauri/binaries/`, non versionné) |
+| `scripts/fetch-engine.mjs` | Téléchargement du sidecar depuis la release du moteur, avec vérification d'empreinte |
+| `engine.lock.json` | Épinglage : dépôt + tag du moteur, nom et SHA-256 de l'asset de chaque cible |
 | `memory.md` | Mémoire du projet : architecture, cycle de vie du moteur, limites connues |
+
+## Moteur & sidecar
+
+Le sidecar est le binaire Go `ratio-spoof` lancé par le backend. Pour qu'il n'existe qu'une
+seule source de vérité, ce dépôt n'en garde **ni les sources, ni le binaire** :
+
+| Où | Rôle |
+|----|------|
+| [`Endymi0n74/ratio-spoof`](https://github.com/Endymi0n74/ratio-spoof) | Sources Go, CI (`go vet` + `go test`) et publication des assets d'une release |
+| `engine.lock.json` | Tag épinglé + nom et SHA-256 de l'asset de chaque cible supportée |
+| `scripts/fetch-engine.mjs` | Télécharge, vérifie puis installe le sidecar dans `src-tauri/binaries/` |
+
+Chaque release du moteur publie un binaire par cible, nommé comme Tauri attend un `externalBin`
+(`ratio-spoof-<target-triple>[.exe]`) plus un `SHA256SUMS` : `x86_64-pc-windows-msvc`,
+`x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-apple-darwin`, `aarch64-apple-darwin`.
+Le target triple est résolu automatiquement (option `--target`, `TAURI_ENV_TARGET_TRIPLE`, `rustc -vV`,
+puis la plateforme de Node).
+
+```bash
+npm run engine:fetch                    # installe le sidecar de la cible courante
+npm run engine:check                    # vérifie l'empreinte sans rien télécharger
+node scripts/fetch-engine.mjs --force   # retélécharge même si l'empreinte est déjà bonne
+node scripts/fetch-engine.mjs --offline # refuse tout accès réseau
+```
+
+Une empreinte qui ne correspond pas arrête le build avec un message explicite : un asset remplacé
+côté release ne passe jamais inaperçu. Pour adopter une nouvelle version du moteur : publier un tag
+dans le dépôt moteur, réinstaller chaque cible (`--force`) puis ré-épingler les empreintes
+(`npm run engine:update-lock`).
+
+Pour développer le moteur en local, `RATIO_SPOOF_ENGINE_BIN=<chemin>` installe un binaire construit
+à la main à la place de l'asset — l'empreinte n'est alors pas vérifiée, mais elle est affichée pour
+ré-épinglage.
 
 ## Architecture
 
@@ -93,7 +129,7 @@ cd engine && GOOS=windows GOARCH=amd64 go build \
 
 | Étape | Comportement |
 |-------|--------------|
-| Lancement | Le sidecar embarqué est résolu dans le bundle (à côté de l'exécutable, dans ses ressources, sinon dans le dépôt en développement) ; il est lancé dans son propre groupe de processus, sans console visible |
+| Lancement | Le sidecar téléchargé est résolu dans le bundle (à côté de l'exécutable, dans ses ressources, sinon dans le dépôt en développement) ; il est lancé dans son propre groupe de processus, sans console visible |
 | Arrêt (`stop_session`) | Le moteur reçoit `CTRL_BREAK_EVENT` sous Windows, `SIGTERM` ailleurs : c'est l'équivalent de `SIGTERM` côté Go, que le moteur traduit en `os.Interrupt` pour envoyer son annonce finale « stopped » au tracker |
 | Moteur qui ne répond pas | Tué de force après 10 s (le moteur coincé dans un retry réseau ne doit pas rester vivant) |
 | Fermeture de l'application | Tous les moteurs sont arrêtés proprement (3 s), puis tués : aucun ne survit en orphelin |
