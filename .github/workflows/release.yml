@@ -49,6 +49,11 @@ jobs:
       - name: Sidecar (release du moteur, empreinte vérifiée)
         run: npm run engine:fetch
 
+      # `tauri::generate_context!` exige que `frontendDist` existe : sans `dist/`,
+      # le crate ne compile même pas en profil de test.
+      - name: Front (dist pour la compilation du crate)
+        run: npm run build
+
       # Garde-fou : ne rien publier qu'on n'ait vérifié. Ce test vient après
       # `engine:fetch` car la résolution du moteur est testée sur le vrai
       # `src-tauri/binaries/` du dépôt (sinon il n'y aurait rien à résoudre).

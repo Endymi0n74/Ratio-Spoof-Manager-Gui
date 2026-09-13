@@ -96,8 +96,9 @@ ré-épinglage.
 ## Release et paquet portable
 
 Un tag `v*` déclenche [`.github/workflows/release.yml`](.github/workflows/release.yml) (Windows x64,
-sans installateur) : `npm ci` → `engine:fetch` (sidecar vérifié) → `cargo test --lib` →
-`npm run tauri build -- --no-bundle` → assemblage du paquet → publication. Le workflow refuse de
+sans installateur) : `npm ci` → `engine:fetch` (sidecar vérifié) → `npm run build` (le `dist/` exigé
+par la compilation du crate) → `cargo test --lib` → `npm run tauri build -- --no-bundle` → assemblage
+du paquet → publication. Le workflow refuse de
 continuer si la version du tag ne correspond pas à celle de `package.json` (l'archive porterait un faux
 numéro de version) ou si un test du backend échoue — rien n'est publié sans être vérifié.
 
