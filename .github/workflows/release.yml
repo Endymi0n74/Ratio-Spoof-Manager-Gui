@@ -49,6 +49,13 @@ jobs:
       - name: Sidecar (release du moteur, empreinte vérifiée)
         run: npm run engine:fetch
 
+      # Garde-fou : ne rien publier qu'on n'ait vérifié. Ce test vient après
+      # `engine:fetch` car la résolution du moteur est testée sur le vrai
+      # `src-tauri/binaries/` du dépôt (sinon il n'y aurait rien à résoudre).
+      - name: Tests du backend
+        working-directory: src-tauri
+        run: cargo test --lib
+
       - name: Exécutable (sans installateur WiX/NSIS)
         run: npm run tauri build -- --no-bundle
 
