@@ -1,0 +1,46 @@
+name: CI
+
+# Intégration continue : clippy (zéro avertissement) et tests du backend à chaque
+# push sur master et à chaque pull request. La version allégée suffit ici : le
+# crate compile avec un simple espace réservé `dist/` (le build complet du front
+# et le sidecar ne sont nécessaires que pour la release, voir release.yml).
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  clippy-tests:
+    name: clippy + tests (windows-x64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # `tauri::generate_context!` exige que `frontendDist` existe : sans `dist/`,
+      # le crate ne compile même pas en profil de test.
+      - name: Espace réservé dist
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          if (-not (Test-Path "dist/index.html")) {
+            Set-Content -Path "dist/index.html" -Value "<!doctype html><title>placeholder</title>" -NoNewline
+          }
+
+      - name: Clippy (zéro avertissement)
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Tests du backend
+        working-directory: src-tauri
+        run: cargo test --lib

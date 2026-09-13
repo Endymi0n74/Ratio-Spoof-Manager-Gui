@@ -61,6 +61,10 @@ jobs:
         working-directory: src-tauri
         run: cargo test --lib
 
+      - name: Clippy (zéro avertissement)
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
       - name: Exécutable (sans installateur WiX/NSIS)
         run: npm run tauri build -- --no-bundle
 

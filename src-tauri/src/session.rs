@@ -638,7 +638,7 @@ fn extract_ratio(msg: &str) -> Option<f64> {
         let after = &msg[idx + 5..];
         if let Some(num_str) = extract_first_number(after) {
             if let Ok(val) = num_str.parse::<f64>() {
-                if val >= 0.0 && val < 10000.0 {
+                if (0.0..10000.0).contains(&val) {
                     return Some(val);
                 }
             }
