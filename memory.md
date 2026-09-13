@@ -14,8 +14,14 @@
 | `src/` | Frontend (vite, JS vanilla) — `app.js`, `components/` (`NewSessionForm`, `SessionCard`, `LogPanel`, `Toast`, `SpeedChart`, `worker.js`) |
 | `src-tauri/src/` | Backend Rust — `lib.rs`, `commands.rs` (IPC), `session.rs` (SessionManager), `process.rs` (spawn/signal/job), `settings.rs` |
 | `src-tauri/binaries/` | Sidecar Go embarqué (`ratio-spoof-x86_64-pc-windows-msvc.exe`) |
-| `engine/` | **Moteur Go complet** (`ratio-spoof`) + GUI Python d'origine, version corrigée (voir § Moteur) |
+| `engine/` | **Moteur Go** (`ratio-spoof`), version corrigée (voir § Moteur) |
 | `.cache/` | Outils et sauvegardes locaux, **ignoré par Git** (Go portable, ancien sidecar) |
+
+## Dépôt
+
+- **GitHub :** <https://github.com/Endymi0n74/ratio-spoof-manager-tauri> — **renommé le 13/09/2026** (il s'appelait `Ratio_Spoof_Gui`), branche unique `master`, aucun tag ni release.
+- `origin` du dépôt local pointe sur ce nom ; l'ancienne adresse est redirigée par GitHub.
+- Historique : le `master` d'origine (96 commits — moteur ratio-spoof depuis 2023 + GUI Python) a été écrasé par un push forcé le 13/09/2026, à la demande. Le contenu du moteur est conservé dans `engine/`, les tags et la release `gui-v1.2.3` ont été supprimés ensuite.
 
 ## Build & vérifications
 
@@ -34,6 +40,8 @@ cd src-tauri && cargo clippy --all-targets
 ## Moteur (engine/) et sidecar
 
 - `engine/` est la **version corrigée** du dépôt `Ratio_Spoof_Gui` (7 correctifs d'audit : fuite de connexions tracker, `Notify` bufferisé, `Run() error`, erreurs enveloppées `%w`, lint, vérification de `crypto/rand`, renommage des champs `HttpTracker`), vérifiée par `go build`, `go vet`, `go test ./...` (7 packages) et un test de non-régression sur la fermeture du corps HTTP.
+Le dossier `engine/` ne contient plus que le moteur Go : la GUI Python d'origine (`engine/gui/`), les images du README et le workflow CI (`engine/.github/`, jamais exécuté depuis un sous-dossier) ont été retirés le 13/09/2026. `engine/CHANGELOG.md` reste comme archive des releases de la GUI historique.
+
 - **Reconstruire le sidecar** après toute modification du moteur :
   ```bash
   cd engine && GOOS=windows GOARCH=amd64 ../.cache/go/bin/go build \
@@ -69,4 +77,5 @@ Détail Windows : `GenerateConsoleCtrlEvent` **renvoie succès même quand rien 
 - La **cross-compilation complète** du crate pour Linux n'est pas vérifiable ici (sysroot GTK absent) ; le module Unix isolé a été compilé pour `x86_64-unknown-linux-gnu` via un `rustc` ciblé.
 - `cargo clippy` conserve un avertissement **préexistant** (`manual Range::contains` dans `extract_ratio`, `session.rs`).
 - Le parsing des stats repose sur des heuristiques textuelles (`extract_speed`, `extract_ratio`…) appliquées aux lignes du moteur : à revoir si le format de sortie de `printer.go` change.
-- Fichiers volontairement **non versionnés** : `rsm_ultra.zip` (instantané de sauvegarde du 10/08/2026), `.cache/`.
+- Fichiers volontairement **non versionnés** : `.cache/` (outils locaux), `dist/` (bundle Vite), `node_modules/`, `src-tauri/target/`.
+- **Nettoyage du 13/09/2026 :** ~6,5 Go libérés (`node_modules/`, `src-tauri/target/`, ancien sidecar de 2021, archive de l'historique écrasé, `rsm_ultra.zip`). Seul le **Go portable** est conservé dans `.cache/go` (Go n'est pas installé sur la machine) : sans lui, pas de reconstruction du sidecar.
