@@ -20,28 +20,40 @@ Interface desktop moderne pour [ratio-spoof](https://github.com/ap-pauloafonso/r
 
 - [Rust](https://rustup.rs/) (1.70+)
 - [Node.js](https://nodejs.org/) 20+
-- Le binaire `ratio-spoof` (core Go) à placer dans `src-tauri/binaries/`
+- [Go](https://go.dev/dl/) 1.20+ — utile seulement pour reconstruire le moteur ; le sidecar compilé est déjà versionné dans `src-tauri/binaries/`
 
 ## Installation
 
 ```bash
 # 1. Clone
-git clone https://github.com/Endymi0n74/Ratio_Spoof_Gui.git
-cd Ratio_Spoof_Gui
+git clone https://github.com/Endymi0n74/ratio-spoof-manager-tauri.git
+cd ratio-spoof-manager-tauri
 
-# 2. Placez le binaire ratio-spoof
-cp /chemin/vers/ratio-spoof src-tauri/binaries/
-# Windows: cp ratio-spoof.exe src-tauri/binaries/
-
-# 3. Dépendances
+# 2. Dépendances
 npm install
 
-# 4. Mode développement
-cargo tauri dev
+# 3. Mode développement
+npm run tauri dev
 
-# 5. Build release
-cargo tauri build
+# 4. Exécutable release (sans installateur MSI, donc sans WiX/NSIS à télécharger)
+npm run tauri build -- --no-bundle
 ```
+
+Rien à copier pour lancer l'application : le sidecar est embarqué. Pour le **reconstruire** après une modification du moteur :
+
+```bash
+cd engine && GOOS=windows GOARCH=amd64 go build \
+    -o ../src-tauri/binaries/ratio-spoof-x86_64-pc-windows-msvc.exe .
+```
+
+## Structure du dépôt
+
+| Chemin | Rôle |
+|--------|------|
+| `src/` | Interface (JS vanilla, composants, styles) |
+| `src-tauri/` | Backend Rust (Tauri 2) et sidecar embarqué |
+| `engine/` | Moteur Go `ratio-spoof` (source, tests, `Makefile`) |
+| `memory.md` | Mémoire du projet : architecture, cycle de vie du moteur, limites connues |
 
 ## Architecture
 
