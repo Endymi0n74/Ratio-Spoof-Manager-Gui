@@ -418,6 +418,9 @@ mod unix {
 /// Nom du moteur, sans suffixe de cible ni extension.
 pub const ENGINE_NAME: &str = "ratio-spoof";
 
+/// Début du nom d'un sidecar suffixé par la cible (`ratio-spoof-<target-triple>`).
+const ENGINE_PREFIX: &str = "ratio-spoof-";
+
 /// Le front envoie un nom nu (ex. « ratio-spoof ») quand l'utilisateur choisit
 /// le moteur embarqué ; tout ce qui contient un séparateur est un chemin.
 fn is_bare_name(requested: &str) -> bool {
@@ -457,25 +460,58 @@ fn find_engine_in(dir: &Path) -> Option<PathBuf> {
         return Some(exact);
     }
 
-    let prefix = format!("{ENGINE_NAME}-");
     let mut matches: Vec<PathBuf> = std::fs::read_dir(dir)
         .ok()?
         .filter_map(|entry| entry.ok())
         .map(|entry| entry.path())
+        .filter(|path| path.is_file())
+        // L'application elle-même s'appelle `ratio-spoof-manager.exe` dans le
+        // paquet portable : la lancer comme moteur ouvrirait une seconde fenêtre
+        // de l'interface au lieu de démarrer un torrent.
+        .filter(|path| !is_current_executable(path))
         .filter(|path| {
-            if !path.is_file() {
-                return false;
-            }
-            match path.file_name().and_then(|name| name.to_str()) {
-                Some(name) => {
-                    name.starts_with(&prefix) && (suffix.is_empty() || name.ends_with(suffix))
-                }
-                None => false,
-            }
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(is_engine_file_name)
         })
         .collect();
     matches.sort();
     matches.into_iter().next()
+}
+
+/// Vrai si `name` a la forme d'un sidecar publié : `ratio-spoof-<target-triple>[.exe]`.
+///
+/// Cette contrainte de forme est ce qui distingue le moteur de l'application :
+/// `ratio-spoof-manager.exe` commence comme un sidecar, mais `manager` n'a pas la
+/// forme d'un triplet de cible (au moins trois composants).
+fn is_engine_file_name(name: &str) -> bool {
+    let suffix = std::env::consts::EXE_SUFFIX;
+    let Some(rest) = name.strip_prefix(ENGINE_PREFIX) else {
+        return false;
+    };
+    let Some(stem) = rest.strip_suffix(suffix) else {
+        return false;
+    };
+
+    let parts: Vec<&str> = stem.split('-').collect();
+    parts.len() >= 3
+        && parts.iter().all(|part| {
+            !part.is_empty() && part.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        })
+}
+
+/// Le moteur ne peut pas être l'application en train de tourner.
+fn is_current_executable(path: &Path) -> bool {
+    let Ok(current) = std::env::current_exe() else {
+        return false;
+    };
+    if current == path {
+        return true;
+    }
+    match (std::fs::canonicalize(&current), std::fs::canonicalize(path)) {
+        (Ok(current), Ok(candidate)) => current == candidate,
+        _ => false,
+    }
 }
 
 /// Dernier recours : le moteur est-il installé dans le `PATH` ?
@@ -575,11 +611,82 @@ mod tests {
         let found = resolve_engine_path(ENGINE_NAME)
             .expect("le sidecar embarqué doit être trouvé dans le dépôt");
         assert!(found.is_file(), "{} devrait exister", found.display());
-        assert!(found
+
+        let name = found
             .file_name()
             .and_then(|name| name.to_str())
-            .unwrap_or_default()
-            .starts_with(ENGINE_NAME));
+            .unwrap_or_default();
+        assert!(name.starts_with(ENGINE_NAME));
+        assert_ne!(
+            name,
+            format!("{ENGINE_NAME}-manager{}", std::env::consts::EXE_SUFFIX),
+            "l'application ne doit jamais être résolue comme moteur"
+        );
+    }
+
+    #[test]
+    fn engine_file_names_must_look_like_a_target_triple() {
+        let suffix = std::env::consts::EXE_SUFFIX;
+
+        assert!(is_engine_file_name(&format!(
+            "{ENGINE_NAME}-x86_64-pc-windows-msvc{suffix}"
+        )));
+        assert!(is_engine_file_name(&format!(
+            "{ENGINE_NAME}-aarch64-apple-darwin{suffix}"
+        )));
+
+        assert!(!is_engine_file_name(&format!("{ENGINE_NAME}-manager{suffix}")));
+        assert!(!is_engine_file_name(&format!("{ENGINE_NAME}{suffix}")));
+        assert!(!is_engine_file_name(
+            "ratio-spoof-manager-v2.0.0-windows-x64-portable.zip"
+        ));
+        assert!(!is_engine_file_name(ENGINE_NAME));
+    }
+
+    #[test]
+    fn current_executable_is_recognised_by_path() {
+        let exe = std::env::current_exe().expect("chemin du binaire de test");
+        assert!(is_current_executable(&exe));
+        assert!(!is_current_executable(Path::new(
+            "nowhere/ratio-spoof-x86_64-pc-windows-msvc.exe"
+        )));
+    }
+
+    /// Dossier de sonde isolé : on ne veut pas d'un dossier partagé entre tests
+    /// qui tournent en parallèle.
+    fn temp_probe_dir(label: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("{label}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("dossier de sonde");
+        dir
+    }
+
+    /// Le paquet portable place l'application et son moteur dans le même dossier,
+    /// et l'exécutable s'appelle `ratio-spoof-manager.exe` : il commence donc par
+    /// `ratio-spoof-`. Le prendre pour le moteur revient à lancer une seconde
+    /// instance de l'interface — une nouvelle fenêtre au lieu d'un torrent.
+    #[test]
+    fn application_binary_is_not_mistaken_for_the_engine() {
+        let dir = temp_probe_dir("rsm-engine-resolution");
+        let suffix = std::env::consts::EXE_SUFFIX;
+
+        let app = dir.join(format!("{ENGINE_NAME}-manager{suffix}"));
+        std::fs::write(&app, b"l'application, pas le moteur").expect("faux exécutable");
+        assert_eq!(
+            find_engine_in(&dir),
+            None,
+            "l'application ne doit jamais être résolue comme moteur"
+        );
+
+        let sidecar = dir.join(format!("{ENGINE_NAME}-x86_64-pc-windows-msvc{suffix}"));
+        std::fs::write(&sidecar, b"le moteur").expect("faux sidecar");
+        assert_eq!(
+            find_engine_in(&dir),
+            Some(sidecar.clone()),
+            "le sidecar suffixé par la cible doit être choisi"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     /// Lance un processus témoin qui ne se termine pas tout seul, avec les mêmes
