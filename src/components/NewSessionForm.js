@@ -14,6 +14,7 @@ export class NewSessionForm {
     this.presets = options.presets || [];
     this.settings = options.settings || {};
     this.onLaunch = options.onLaunch;
+    this.onSavePreset = options.onSavePreset;
     this.icons = options.icons || {};
     this.torrentPath = '';
     this.selectedPreset = null;
@@ -100,6 +101,14 @@ export class NewSessionForm {
     `;
 
     this.renderPresets();
+
+    // Bouton sauvegarder preset
+    const savePresetBtn = document.createElement('button');
+    savePresetBtn.className = 'btn btn-secondary preset-save-btn';
+    savePresetBtn.innerHTML = (this.icons.add || '+') + ' Sauvegarder preset';
+    savePresetBtn.addEventListener('click', () => this.saveCurrentPreset());
+    const presetsBar = document.getElementById('presets-bar');
+    if (presetsBar) presetsBar.parentNode.insertBefore(savePresetBtn, presetsBar.nextSibling);
   }
 
   renderPresets() {
@@ -163,6 +172,27 @@ export class NewSessionForm {
 
     document.getElementById('btn-launch')?.addEventListener('click', () => this.launch());
     document.getElementById('btn-embedded')?.click();
+  }
+
+  saveCurrentPreset() {
+    const name = prompt('Nom du preset :');
+    if (!name) return;
+
+    const preset = {
+      id: 'custom_' + Date.now(),
+      name: name,
+      description: 'Preset personnalise',
+      config: {
+        downloaded: document.getElementById('field-dl').value,
+        dl_speed: document.getElementById('field-dl-speed').value,
+        uploaded: document.getElementById('field-ul').value,
+        ul_speed: document.getElementById('field-ul-speed').value,
+        port: document.getElementById('field-port').value,
+        client: document.getElementById('field-client').value,
+      }
+    };
+
+    this.onSavePreset?.(preset);
   }
 
   applyPreset(presetId) {

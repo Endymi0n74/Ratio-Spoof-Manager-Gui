@@ -1,0 +1,25 @@
+package generator
+
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"strings"
+)
+
+func NewDefaultKeyGenerator() (*DefaultKeyGenerator, error) {
+	randomBytes := make([]byte, 4)
+	if _, err := rand.Read(randomBytes); err != nil {
+		return nil, err
+	}
+	str := hex.EncodeToString(randomBytes)
+	result := strings.ToUpper(str)
+	return &DefaultKeyGenerator{generated: result}, nil
+}
+
+type DefaultKeyGenerator struct {
+	generated string
+}
+
+func (d *DefaultKeyGenerator) Key() string {
+	return d.generated
+}

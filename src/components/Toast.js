@@ -45,4 +45,5 @@ export class Toast {
   static success(message) { Toast.show(message, 'success'); }
   static error(message) { Toast.show(message, 'error'); }
   static info(message) { Toast.show(message, 'info'); }
+  static warning(message) { Toast.show(message, 'warning'); }
 }

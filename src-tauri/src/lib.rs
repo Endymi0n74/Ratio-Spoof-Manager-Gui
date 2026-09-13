@@ -1,5 +1,3 @@
-use tauri::Manager;
-
 mod commands;
 mod session;
 mod settings;
@@ -22,6 +20,7 @@ pub fn run() {
             commands::pause_session,
             commands::resume_session,
             commands::get_sessions,
+            commands::get_sessions_since,
             commands::get_session_logs,
             commands::get_settings,
             commands::save_settings,
@@ -29,27 +28,17 @@ pub fn run() {
             commands::pick_executable,
             commands::get_presets,
             commands::validate_field,
-		.invoke_handler(tauri::generate_handler![
-// ... tes commandes existantes ...
-			save_settings
+            commands::minimize_window,
+            commands::quit_app,
         ])
-        .setup(|app| {
+        .setup(|_app| {
             #[cfg(debug_assertions)]
-            app.get_webview_window("main").unwrap().open_devtools();
+            {
+                use tauri::Manager;
+                _app.get_webview_window("main").unwrap().open_devtools();
+            }
             Ok(())
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
-#[tauri::command]
-fn save_settings(settings: serde_json::Value) -> Result<(), String> {
-    // TODO: ecrire dans un fichier JSON ou SQLite
-    Ok(())
 }
-
-
-
-
-
-
-
-

@@ -1,4 +1,5 @@
-﻿use crate::session::{SessionConfig, SessionManager, SessionState, LogEntry};
+use tauri::Manager;
+use crate::session::{SessionConfig, SessionManager, LogEntry, SessionView};
 use crate::settings::AppSettings;
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
@@ -97,8 +98,26 @@ pub fn resume_session(
 #[tauri::command]
 pub fn get_sessions(
     manager: State<'_, SessionManager>,
-) -> Result<ApiResponse<Vec<SessionState>>, String> {
+) -> Result<ApiResponse<Vec<SessionView>>, String> {
     Ok(ApiResponse::ok(manager.get_all_sessions()))
+}
+
+#[tauri::command]
+pub fn get_sessions_since(
+    since: String,
+    manager: State<'_, SessionManager>,
+) -> Result<ApiResponse<Vec<SessionView>>, String> {
+    // Parse le timestamp ISO depuis le frontend
+    match since.parse::<chrono::DateTime<chrono::Utc>>() {
+        Ok(dt) => {
+            let local = dt.with_timezone(&chrono::Local);
+            Ok(ApiResponse::ok(manager.get_sessions_since(local)))
+        }
+        Err(_) => {
+            // Fallback: renvoyer tout si le parse échoue
+            Ok(ApiResponse::ok(manager.get_all_sessions()))
+        }
+    }
 }
 
 #[tauri::command]
@@ -272,3 +291,27 @@ pub fn validate_field(
     Ok(ApiResponse::ok(result))
 }
 
+#[tauri::command]
+pub async fn minimize_window(app: tauri::AppHandle) -> Result<ApiResponse<()>, String> {
+    if let Some(window) = app.get_webview_window("main") {
+        window.minimize().map_err(|e| e.to_string())?;
+        Ok(ApiResponse::ok(()))
+    } else {
+        Ok(ApiResponse::err("Window not found".to_string()))
+    }
+}
+
+#[tauri::command]
+pub async fn quit_app(
+    app: tauri::AppHandle,
+    manager: State<'_, SessionManager>,
+) -> Result<ApiResponse<()>, String> {
+    // Quitter ne doit pas laisser les moteurs annoncer au tracker en orphelins :
+    // on les arrête proprement, puis l'application se ferme.
+    let killed = manager.shutdown(crate::process::SHUTDOWN_GRACE_PERIOD).await;
+    if killed > 0 {
+        eprintln!("{killed} moteur(s) ont dû être tués à la fermeture");
+    }
+    app.exit(0);
+    Ok(ApiResponse::ok(()))
+}

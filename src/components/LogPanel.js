@@ -19,11 +19,16 @@ export class LogPanel {
           <div style="font-size: 12px; font-weight: 600; color: var(--text-secondary);">
             Journal
           </div>
-          <div class="log-filters">
-            <button class="log-filter ${this.filter === 'all' ? 'active' : ''}" data-filter="all">Tout</button>
-            <button class="log-filter ${this.filter === 'info' ? 'active' : ''}" data-filter="info">Info</button>
-            <button class="log-filter ${this.filter === 'tracker' ? 'active' : ''}" data-filter="tracker">Tracker</button>
-            <button class="log-filter ${this.filter === 'error' ? 'active' : ''}" data-filter="error">Erreurs</button>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <button class="btn btn-secondary" id="btn-export-logs" style="padding: 4px 10px; font-size: 11px;">
+              Exporter
+            </button>
+            <div class="log-filters">
+              <button class="log-filter ${this.filter === 'all' ? 'active' : ''}" data-filter="all">Tout</button>
+              <button class="log-filter ${this.filter === 'info' ? 'active' : ''}" data-filter="info">Info</button>
+              <button class="log-filter ${this.filter === 'tracker' ? 'active' : ''}" data-filter="tracker">Tracker</button>
+              <button class="log-filter ${this.filter === 'error' ? 'active' : ''}" data-filter="error">Erreurs</button>
+            </div>
           </div>
         </div>
         <div class="log-entries" id="log-entries-container"></div>
@@ -40,6 +45,31 @@ export class LogPanel {
         this.render();
       });
     });
+
+    document.getElementById('btn-export-logs')?.addEventListener('click', () => this.exportLogs());
+  }
+
+  exportLogs() {
+    const logs = this.session.logs || [];
+    if (logs.length === 0) {
+      alert('Aucun log a exporter');
+      return;
+    }
+
+    const lines = logs.map(log => {
+      const time = new Date(log.timestamp).toLocaleString('fr-FR');
+      return `[${time}] [${log.level.toUpperCase()}] ${log.message}`;
+    }).join('\n');
+
+    const blob = new Blob([lines], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `logs-${this.session.id}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 
   update(session) {
@@ -55,7 +85,6 @@ export class LogPanel {
       return;
     }
 
-    // Batcher les ajouts pour eviter les reflows/repaints multiples
     const fragment = document.createDocumentFragment();
     filtered.forEach(log => {
       const el = document.createElement('div');

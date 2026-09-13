@@ -77,6 +77,20 @@ cargo tauri build
 | `src-tauri/src/commands.rs` | Commandes IPC exposées au frontend |
 | `src-tauri/src/process.rs` | Spawn et contrôle du binaire Go |
 
+## Cycle de vie du moteur
+
+| Étape | Comportement |
+|-------|--------------|
+| Lancement | Le sidecar embarqué est résolu dans le bundle (à côté de l'exécutable, dans ses ressources, sinon dans le dépôt en développement) ; il est lancé dans son propre groupe de processus, sans console visible |
+| Arrêt (`stop_session`) | Le moteur reçoit `CTRL_BREAK_EVENT` sous Windows, `SIGTERM` ailleurs : c'est l'équivalent de `SIGTERM` côté Go, que le moteur traduit en `os.Interrupt` pour envoyer son annonce finale « stopped » au tracker |
+| Moteur qui ne répond pas | Tué de force après 10 s (le moteur coincé dans un retry réseau ne doit pas rester vivant) |
+| Fermeture de l'application | Tous les moteurs sont arrêtés proprement (3 s), puis tués : aucun ne survit en orphelin |
+| Crash de l'application | Chaque moteur est rattaché à un job Windows « kill on close » : dès que le processus de l'application disparaît, Windows tue ses moteurs — même sans fermeture propre |
+
+Sous Windows, l'événement de console ne peut être adressé qu'au groupe de processus d'une console à laquelle l'appelant est attaché : le backend s'attache donc à la console du moteur (`AttachConsole`) avant d'envoyer le signal.
+
+Si le rattachement au job « kill on close » échoue (par exemple quand l'application tourne elle-même dans un job qui interdit l'imbrication), la perte de la garantie est **inscrite en avertissement dans le journal de la session** au démarrage du moteur : elle n'est jamais silencieuse et l'utilisateur sait exactement ce qui reste couvert (le bouton Arrêter, Ctrl+Q) et ce qui ne l'est plus (un arrêt brutal).
+
 ## Commandes IPC
 
 | Commande | Description |
