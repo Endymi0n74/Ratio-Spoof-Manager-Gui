@@ -1,9 +1,10 @@
 name: CI
 
 # Intégration continue : clippy (zéro avertissement) et tests du backend à chaque
-# push sur master et à chaque pull request. La version allégée suffit ici : le
-# crate compile avec un simple espace réservé `dist/` (le build complet du front
-# et le sidecar ne sont nécessaires que pour la release, voir release.yml).
+# push sur master et à chaque pull request. Version allégée de release.yml : un
+# simple espace réservé `dist/` suffit à compiler (le build complet du front n'est
+# utile qu'à la release), mais le sidecar du moteur est bien récupéré car le build
+# script Tauri l'exige et les tests vérifient sa résolution.
 on:
   push:
     branches: [master]
@@ -11,6 +12,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  NODE_VERSION: "20"
 
 jobs:
   clippy-tests:
@@ -18,6 +20,10 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -36,6 +42,13 @@ jobs:
           if (-not (Test-Path "dist/index.html")) {
             Set-Content -Path "dist/index.html" -Value "<!doctype html><title>placeholder</title>" -NoNewline
           }
+
+      # Le build script Tauri refuse de s'exécuter si la ressource sidecar déclarée
+      # est absente, et le test de résolution du moteur vérifie le vrai binaire :
+      # même script que release.yml (empreinte vérifiée), sans `npm ci` car il ne
+      # dépend que des builtins Node.
+      - name: Sidecar (release du moteur, empreinte vérifiée)
+        run: node scripts/fetch-engine.mjs
 
       - name: Clippy (zéro avertissement)
         working-directory: src-tauri
