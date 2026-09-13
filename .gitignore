@@ -12,8 +12,10 @@ out/
 
 # Tauri
 src-tauri/target/
-src-tauri/Cargo.lock
 src-tauri/gen/
+# src-tauri/Cargo.lock est versionné : c'est une application, pas une bibliothèque. Sans
+# lui, chaque build résout de nouvelles versions de crates et la CI peut tomber sur un
+# décalage majeur/mineur avec les paquets npm (le CLI Tauri refuse alors de builder).
 
 # Sidecar : téléchargé depuis la release du moteur (scripts/fetch-engine.mjs + engine.lock.json),
 # jamais versionné ici — le dépôt moteur en est la seule source de vérité.
