@@ -279,10 +279,11 @@ export class NewSessionForm {
       valid = !isNaN(n) && n > 0 && n <= 65535;
       msg = valid ? 'OK' : 'Port invalide';
     } else if (field.includes('speed')) {
-      valid = /^\d+\s*(bps|kbps|mbps|gbps)$/i.test(value);
-      msg = valid ? 'OK' : 'Format: 5mbps';
+      // Le moteur n'accepte que kbps et mbps (input.go : validSpeedSufixes).
+      valid = /^\d+(\.\d+)?\s*(kbps|mbps)$/i.test(value);
+      msg = valid ? 'OK' : 'Format: 5mbps ou 500kbps';
     } else {
-      valid = /^\d+\s*(%|mb|gb|tb)?$/i.test(value) || /^\d+(\.\d+)?\s*(%|mb|gb|tb)$/i.test(value);
+      valid = /^\d+(\.\d+)?\s*(%|b|kb|mb|gb|tb)$/i.test(value);
       msg = valid ? 'OK' : 'Format: 100% ou 500MB';
     }
 
@@ -323,10 +324,13 @@ export class NewSessionForm {
 
     const config = {
       torrent_path: this.torrentPath,
-      downloaded: document.getElementById('field-dl').value.trim().toLowerCase().replace(',', '.'),
-      dl_speed: document.getElementById('field-dl-speed').value.trim().toLowerCase().replace(',', '.'),
-      uploaded: document.getElementById('field-ul').value.trim().toLowerCase().replace(',', '.'),
-      ul_speed: document.getElementById('field-ul-speed').value.trim().toLowerCase().replace(',', '.'),
+      // Espace interne supprimé : « 5 mbps » passerait la validation mais le
+      // moteur échouerait sur ParseFloat("5 ") (input.go n'enlève pas les
+      // espaces, lui).
+      downloaded: document.getElementById('field-dl').value.trim().toLowerCase().replace(',', '.').replace(/\s+/g, ''),
+      dl_speed: document.getElementById('field-dl-speed').value.trim().toLowerCase().replace(',', '.').replace(/\s+/g, ''),
+      uploaded: document.getElementById('field-ul').value.trim().toLowerCase().replace(',', '.').replace(/\s+/g, ''),
+      ul_speed: document.getElementById('field-ul-speed').value.trim().toLowerCase().replace(',', '.').replace(/\s+/g, ''),
       port: parseInt(document.getElementById('field-port').value),
       client: clientValue,
       engine_path: enginePath,

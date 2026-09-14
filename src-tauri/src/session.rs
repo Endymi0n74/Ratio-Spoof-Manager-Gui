@@ -489,23 +489,24 @@ fn to_view_limited(state: &SessionState, now: DateTime<Local>, log_limit: usize)
     let mut ratio = state.ratio;
     let progress = state.progress_percent;
 
-    // Fallback temporel si la session tourne
+    // Fallback temporel si la session tourne : estimation par la vitesse
+    // configurée (l'engine l'applique en octets/seconde, cf. input.go).
     if state.status == SessionStatus::Running {
-        if let Ok(ul_speed_kbps) = parse_speed_config(&state.config.ul_speed) {
+        if let Ok(ul_bps) = parse_speed_config(&state.config.ul_speed) {
             let elapsed_secs = elapsed as f64;
-            let estimated = ul_speed_kbps * elapsed_secs / 8.0 / 1024.0;
+            let estimated = ul_bps * elapsed_secs / (1024.0 * 1024.0);
             if total_uploaded < estimated {
                 total_uploaded = estimated;
             }
-            upload_speed = ul_speed_kbps;
+            upload_speed = ul_bps / 1024.0;
         }
-        if let Ok(dl_speed_kbps) = parse_speed_config(&state.config.dl_speed) {
+        if let Ok(dl_bps) = parse_speed_config(&state.config.dl_speed) {
             let elapsed_secs = elapsed as f64;
-            let estimated = dl_speed_kbps * elapsed_secs / 8.0 / 1024.0;
+            let estimated = dl_bps * elapsed_secs / (1024.0 * 1024.0);
             if total_downloaded < estimated {
                 total_downloaded = estimated;
             }
-            download_speed = dl_speed_kbps;
+            download_speed = dl_bps / 1024.0;
         }
         if total_downloaded > 0.0 {
             ratio = (total_uploaded / total_downloaded).min(999.9);
@@ -568,182 +569,141 @@ fn parse_log_line(line: &str) -> LogEntry {
     }
 }
 
+/// Alimente les statistiques depuis la sortie réelle du moteur (printer.go),
+/// dont les valeurs sont au format IEC sans espace : « 800.00MiB ».
+///
+/// Deux familles de lignes :
+/// - l'annonce, toutes les ~30 s : `#1 downloaded: 800.00MiB(4.00%) | left:
+///   19.20GiB | uploaded: 200.00MiB | next announce in: 4m26s` — elle porte
+///   les **totaux cumulés** réels côté tracker ;
+/// - le bloc rafraîchi chaque seconde : `Download Speed: 2.00MiB/s`,
+///   `Upload Speed: 500.00KiB/s`, `Size: 30.00GiB`.
 fn update_stats_from_log(state: &mut SessionState, log: &LogEntry) {
     let msg = &log.message;
     let now = Local::now();
 
-    // Le delta est calculé AVANT de mettre à jour last_update, sinon il vaut toujours ~0
-    let prev_update = state.last_update;
     state.last_update = now;
     state.elapsed_seconds = now.signed_duration_since(state.created_at).num_seconds().max(0) as u64;
 
-    let delta_secs = now.signed_duration_since(prev_update).num_seconds().max(0) as f64;
     let msg_lower = msg.to_lowercase();
 
-    if msg_lower.contains("upload") {
-        if let Some(speed_kbps) = extract_speed(msg) {
-            state.current_upload_speed = speed_kbps;
-            if delta_secs > 0.0 {
-                state.total_uploaded_mb += speed_kbps * delta_secs / 8.0 / 1024.0;
-            }
-        }
-        if let Some(size_mb) = extract_size_mb(msg) {
-            state.total_uploaded_mb = size_mb.max(state.total_uploaded_mb);
-        }
-    }
-
-    if msg_lower.contains("download") {
-        if let Some(speed_kbps) = extract_speed(msg) {
-            state.current_download_speed = speed_kbps;
-            if delta_secs > 0.0 {
-                state.total_downloaded_mb += speed_kbps * delta_secs / 8.0 / 1024.0;
-            }
-        }
-        if let Some(size_mb) = extract_size_mb(msg) {
-            state.total_downloaded_mb = size_mb.max(state.total_downloaded_mb);
-        }
-    }
-
-    if let Some(ratio) = extract_ratio(msg) {
-        state.ratio = ratio;
-    } else if state.total_downloaded_mb > 0.0 {
-        state.ratio = (state.total_uploaded_mb / state.total_downloaded_mb).min(999.9);
-    }
-
-    if let Some(progress) = extract_progress_percent(msg) {
-        state.progress_percent = progress;
-    }
-
-    if msg_lower.contains("announce") || msg_lower.contains("tracker") {
+    // Totaux : la ligne d'annonce fait foi, on ne garde que les valeurs
+    // croissantes (chaque annonce repart de l'état cumulé du tracker).
+    if msg_lower.contains("downloaded:") {
         state.last_announce = Some(now);
+        if let Some(bytes) = parse_size_after(&msg_lower, "downloaded:") {
+            let total_mb = bytes / (1024.0 * 1024.0);
+            if total_mb > state.total_downloaded_mb {
+                state.total_downloaded_mb = total_mb;
+            }
+        }
+        if let Some(pct) = parse_percent_after(&msg_lower, "downloaded:") {
+            state.progress_percent = pct;
+        }
+        if let Some(bytes) = parse_size_after(&msg_lower, "uploaded:") {
+            let total_mb = bytes / (1024.0 * 1024.0);
+            if total_mb > state.total_uploaded_mb {
+                state.total_uploaded_mb = total_mb;
+            }
+        }
+        if state.total_downloaded_mb > 0.0 {
+            state.ratio = (state.total_uploaded_mb / state.total_downloaded_mb).min(999.9);
+        }
+    }
+
+    // Vitesses (valeur déjà par seconde) ; l'affichage attend des kB/s
+    // (binaires : le KB/s affiché est un KiB/s, comme partout dans l'interface).
+    if msg_lower.contains("download speed:") {
+        if let Some(bps) = parse_speed_after(&msg_lower, "download speed:") {
+            state.current_download_speed = bps / 1024.0;
+        }
+    }
+    if msg_lower.contains("upload speed:") {
+        if let Some(bps) = parse_speed_after(&msg_lower, "upload speed:") {
+            state.current_upload_speed = bps / 1024.0;
+        }
     }
 }
 
+/// Convertit la saisie utilisateur en **octets par seconde**, la convention du
+/// moteur (input.go : « 5mbps » = 5 × 1024 × 1024 o/s ; seuls « kbps » et
+/// « mbps » sont acceptés, tout comme par `extractInputByteSpeed`). Une valeur
+/// sans unité est refusée : le moteur la rejetterait aussi.
 fn parse_speed_config(val: &str) -> Result<f64> {
-    let val = val.to_lowercase().replace(',', ".").replace(" ", "");
-    if val.ends_with("mbps") {
-        Ok(val.trim_end_matches("mbps").parse::<f64>()? * 1000.0)
-    } else if val.ends_with("kbps") {
-        Ok(val.trim_end_matches("kbps").parse::<f64>()?)
-    } else if val.ends_with("gbps") {
-        Ok(val.trim_end_matches("gbps").parse::<f64>()? * 1000.0 * 1000.0)
-    } else if val.ends_with("mb/s") {
-        Ok(val.trim_end_matches("mb/s").parse::<f64>()? * 8000.0)
-    } else if val.ends_with("kb/s") {
-        Ok(val.trim_end_matches("kb/s").parse::<f64>()? * 8.0)
-    } else if val.ends_with("gb/s") {
-        Ok(val.trim_end_matches("gb/s").parse::<f64>()? * 8000.0 * 1000.0)
+    let val = val.to_lowercase().replace(',', ".").replace(' ', "");
+    if let Some(num) = val.strip_suffix("mbps") {
+        Ok(num.parse::<f64>()? * 1024.0 * 1024.0)
+    } else if let Some(num) = val.strip_suffix("kbps") {
+        Ok(num.parse::<f64>()? * 1024.0)
     } else {
-        Ok(val.parse()?)
+        Err(anyhow!("vitesse sans unité kbps/mbps : « {} »", val))
     }
 }
 
-fn extract_speed(msg: &str) -> Option<f64> {
-    let msg_lower = msg.to_lowercase();
-    let patterns = [
-        ("mbps", 1000.0),
-        ("mb/s", 1000.0 * 8.0),
-        ("kbps", 1.0),
-        ("kb/s", 8.0),
-        ("gbps", 1000.0 * 1000.0),
-        ("gb/s", 1000.0 * 8000.0),
-    ];
-
-    for (unit, multiplier) in patterns {
-        if let Some(idx) = msg_lower.find(unit) {
-            let before = &msg[..idx].trim_end();
-            if let Some(num_str) = extract_last_number(before) {
-                if let Ok(val) = num_str.parse::<f64>() {
-                    return Some(val * multiplier);
-                }
-            }
-        }
+/// Analyse « <nombre><unité> » juste après un mot-clé — sans espace entre les
+/// deux, au format `humanReadableSize` de printer.go — et renvoie la valeur
+/// avec son unité (minuscules, l'appelant passe déjà une chaîne lowercasée).
+fn number_and_unit_after(msg_lower: &str, keyword: &str) -> Option<(f64, String)> {
+    let idx = msg_lower.find(keyword)?;
+    let after = &msg_lower[idx + keyword.len()..];
+    let bytes = after.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() && !bytes[i].is_ascii_digit() && bytes[i] != b'.' {
+        i += 1;
     }
-    None
+    let num_start = i;
+    let mut dots = 0;
+    while i < bytes.len() && (bytes[i].is_ascii_digit() || (bytes[i] == b'.' && dots == 0)) {
+        if bytes[i] == b'.' {
+            dots += 1;
+        }
+        i += 1;
+    }
+    if num_start == i {
+        return None;
+    }
+    let val: f64 = after[num_start..i].parse().ok()?;
+    let unit: String = after[i..].chars().take_while(|c| c.is_ascii_alphabetic()).collect();
+    if unit.is_empty() {
+        return None;
+    }
+    Some((val, unit))
 }
 
-fn extract_size_mb(msg: &str) -> Option<f64> {
-    let msg_lower = msg.to_lowercase();
-    let patterns = [
-        ("tb", 1024.0 * 1024.0),
-        ("gb", 1024.0),
-        ("mb", 1.0),
-        ("kb", 1.0 / 1024.0),
-    ];
-
-    for (unit, multiplier) in patterns {
-        if let Some(idx) = msg_lower.find(unit) {
-            let before = &msg[..idx].trim_end();
-            if let Some(num_str) = extract_last_number(before) {
-                if let Ok(val) = num_str.parse::<f64>() {
-                    return Some(val * multiplier);
-                }
-            }
-        }
+/// Multiplicateur vers octets d'une unité IEC du moteur (B, KiB, MiB, GiB, TiB).
+fn iec_multiplier(unit: &str) -> Option<f64> {
+    match unit {
+        "tib" => Some(1024f64.powi(4)),
+        "gib" => Some(1024f64.powi(3)),
+        "mib" => Some(1024f64.powi(2)),
+        "kib" => Some(1024.0),
+        "b" => Some(1.0),
+        _ => None,
     }
-    None
 }
 
-fn extract_ratio(msg: &str) -> Option<f64> {
-    let msg_lower = msg.to_lowercase();
-    if let Some(idx) = msg_lower.find("ratio") {
-        let after = &msg[idx + 5..];
-        if let Some(num_str) = extract_first_number(after) {
-            if let Ok(val) = num_str.parse::<f64>() {
-                if (0.0..10000.0).contains(&val) {
-                    return Some(val);
-                }
-            }
-        }
-    }
-    None
+/// Taille qui suit un mot-clé (« downloaded: 800.00MiB »), en octets.
+fn parse_size_after(msg_lower: &str, keyword: &str) -> Option<f64> {
+    let (val, unit) = number_and_unit_after(msg_lower, keyword)?;
+    Some(val * iec_multiplier(&unit)?)
 }
 
-fn extract_progress_percent(msg: &str) -> Option<f64> {
-    let msg_lower = msg.to_lowercase();
-    if let Some(idx) = msg_lower.find('%') {
-        let before = &msg[..idx].trim_end();
-        if let Some(num_str) = extract_last_number(before) {
-            if let Ok(val) = num_str.parse::<f64>() {
-                return Some(val.min(100.0));
-            }
-        }
-    }
-    if let Some(idx) = msg_lower.find("progress") {
-        let after = &msg[idx + 8..];
-        if let Some(num_str) = extract_first_number(after) {
-            if let Ok(val) = num_str.parse::<f64>() {
-                return Some(val.min(100.0));
-            }
-        }
-    }
-    None
+/// Vitesse qui suit un mot-clé (« Upload Speed: 500.00KiB/s »), en octets par
+/// seconde — le « /s » du format n'a pas besoin d'être consommé.
+fn parse_speed_after(msg_lower: &str, keyword: &str) -> Option<f64> {
+    parse_size_after(msg_lower, keyword)
 }
 
-fn extract_last_number(s: &str) -> Option<&str> {
-    let chars: Vec<char> = s.chars().collect();
-    let mut end = chars.len();
-    while end > 0 && !chars[end - 1].is_ascii_digit() && chars[end - 1] != '.' {
-        end -= 1;
-    }
-    if end == 0 { return None; }
-    let mut start = end;
-    let mut dot_count = 0;
-    while start > 0 {
-        let c = chars[start - 1];
-        if c.is_ascii_digit() {
-            start -= 1;
-        } else if c == '.' && dot_count == 0 {
-            dot_count += 1;
-            start -= 1;
-        } else if c == '-' && start > 0 {
-            start -= 1;
-            break;
-        } else {
-            break;
-        }
-    }
-    if start < end { Some(&s[start..end]) } else { None }
+/// Pourcentage entre parenthèses qui suit un mot-clé : « downloaded:
+/// 800.00MiB(4.00%) » → 4.0.
+fn parse_percent_after(msg_lower: &str, keyword: &str) -> Option<f64> {
+    let idx = msg_lower.find(keyword)?;
+    let after = &msg_lower[idx + keyword.len()..];
+    let open = after.find('(')?;
+    let inner = &after[open + 1..];
+    let end = inner.find(')')?;
+    let val: f64 = extract_first_number(&inner[..end])?.parse().ok()?;
+    (0.0..=100.0).contains(&val).then_some(val)
 }
 
 fn extract_first_number(s: &str) -> Option<&str> {
@@ -800,6 +760,69 @@ mod tests {
             progress_percent: 0.0,
             elapsed_seconds: 0,
         }
+    }
+
+    /// Les extracteurs doivent coller au format réel de printer.go : valeurs IEC
+    /// sans espace (« 800.00MiB »). Les anciens parsers cherchaient « mb »/« gb »
+    /// et « mbps » — ils ne matchaient jamais rien de la sortie du moteur.
+    #[test]
+    fn announce_line_feeds_totals_progress_and_ratio() {
+        let mut s = session_with_id("s1");
+        let line = parse_log_line(
+            "#1 downloaded: 800.00MiB(4.00%) | left: 19.20GiB | uploaded: 200.00MiB | next announce in: 4m26s",
+        );
+        update_stats_from_log(&mut s, &line);
+
+        assert!((s.total_downloaded_mb - 800.0).abs() < 1e-9, "{}", s.total_downloaded_mb);
+        assert!((s.total_uploaded_mb - 200.0).abs() < 1e-9, "{}", s.total_uploaded_mb);
+        assert!((s.progress_percent - 4.0).abs() < 1e-9, "{}", s.progress_percent);
+        assert!((s.ratio - 0.25).abs() < 1e-9, "{}", s.ratio);
+        assert!(s.last_announce.is_some(), "la ligne d'annonce date la dernière annonce");
+    }
+
+    /// Les totaux ne font qu'augmenter : une annonce qui repartirait derrière
+    /// (redémarrage, réordonnancement) ne doit pas régresser l'affichage.
+    #[test]
+    fn announce_totals_never_decrease() {
+        let mut s = session_with_id("s1");
+        for total in ["100.00MiB", "250.00MiB", "50.00MiB"] {
+            let line = parse_log_line(&format!("#2 downloaded: {total}(1.00%) | left: 0B | uploaded: 10.00MiB | announced"));
+            update_stats_from_log(&mut s, &line);
+        }
+        assert!((s.total_downloaded_mb - 250.0).abs() < 1e-9, "{}", s.total_downloaded_mb);
+    }
+
+    #[test]
+    fn iec_units_are_converted_to_bytes() {
+        assert_eq!(parse_size_after("downloaded: 1.50gib", "downloaded:"), Some(1.5 * 1024.0 * 1024.0 * 1024.0));
+        assert_eq!(parse_size_after("size: 500.00mib", "size:"), Some(500.0 * 1024.0 * 1024.0));
+        assert_eq!(parse_size_after("x: 2.00kib", "x:"), Some(2048.0));
+        assert_eq!(parse_size_after("x: 7.00b", "x:"), Some(7.0));
+        assert_eq!(parse_size_after("x: 1.00zb", "x:"), None, "unité inconnue : refuser plutôt que deviner");
+        assert_eq!(parse_size_after("x: aucun", "x:"), None);
+    }
+
+    /// Le bloc d'en-tête (rafraîchi chaque seconde) alimente les vitesses
+    /// courantes — en kB/s côté affichage — sans toucher aux totaux.
+    #[test]
+    fn header_block_feeds_current_speeds_in_kbps() {
+        let mut s = session_with_id("s1");
+        update_stats_from_log(&mut s, &parse_log_line("Download Speed: 2.00MiB/s"));
+        update_stats_from_log(&mut s, &parse_log_line("Upload Speed: 512.00KiB/s"));
+
+        assert!((s.current_download_speed - 2048.0).abs() < 1e-6, "{}", s.current_download_speed);
+        assert!((s.current_upload_speed - 512.0).abs() < 1e-6, "{}", s.current_upload_speed);
+        assert_eq!(s.total_downloaded_mb, 0.0, "l'en-tête ne doit pas faire office de total");
+    }
+
+    /// L'estimateur de secours parle désormais octets/seconde, convention du
+    /// moteur (input.go : 1 mbps = 1024×1024 o/s, seuls kbps/mbps existent).
+    #[test]
+    fn parse_speed_config_uses_engine_byte_convention() {
+        assert_eq!(parse_speed_config("5mbps").unwrap(), 5.0 * 1024.0 * 1024.0);
+        assert_eq!(parse_speed_config("512kbps").unwrap(), 512.0 * 1024.0);
+        assert_eq!(parse_speed_config("5 MBPS").unwrap(), 5.0 * 1024.0 * 1024.0);
+        assert!(parse_speed_config("5").is_err(), "le moteur refuse une vitesse sans unité");
     }
 
     /// Supprimer doit retirer la session des listes — et rester sûr à rejouer :

@@ -36,7 +36,7 @@ npm run tauri build -- --no-bundle     # → src-tauri/target/release/ratio-spoo
 # Tests du backend — `npm run build` d'abord : `tauri::generate_context!`
 # exige que `dist/` (frontendDist) existe, sinon le crate ne compile pas en test.
 npm run build
-cd src-tauri && cargo test --lib        # 13 passed, 1 ignored (dont la résolution du moteur)
+cd src-tauri && cargo test --lib        # 23 passed, 1 ignored (dont la résolution du moteur)
 cd src-tauri && cargo clippy --all-targets
 ```
 
@@ -91,7 +91,7 @@ Détail Windows : `GenerateConsoleCtrlEvent` **renvoie succès même quand rien 
 
 - **Aucun équivalent Unix du job** : sur Linux/macOS, un crash de l'application laisse encore les moteurs vivants (seul l'arrêt explicite est couvert).
 - La **cross-compilation complète** du crate pour Linux n'est pas vérifiable ici (sysroot GTK absent) ; le module Unix isolé a été compilé pour `x86_64-unknown-linux-gnu` via un `rustc` ciblé.
-- `cargo clippy` conserve un avertissement **préexistant** (`manual Range::contains` dans `extract_ratio`, `session.rs`).
-- Le parsing des stats repose sur des heuristiques textuelles (`extract_speed`, `extract_ratio`…) appliquées aux lignes du moteur : à revoir si le format de sortie de `printer.go` change.
+- `cargo clippy --all-targets -- -D warnings` est **propre** (vérifié le 14/09/2026) ; l'ancien avertissement `manual Range::contains` dans `extract_ratio` a disparu avec la réécriture du parsing.
+- **Parsing des stats (réécrit le 14/09/2026) :** les parsers collent désormais au **format réel** de `printer.go`, vérifié dans le dépôt moteur — `humanReadableSize` écrit des unités IEC **sans espace** (`800.00MiB`, `1.50GiB`, `2.00KiB/s`) et jamais des « MB »/« kbps ». Les anciens extracteurs (`extract_speed`, `extract_size_mb`, `extract_ratio`…) cherchaient `mb`/`gb`/`mbps` : ils **ne matchaient jamais** la sortie du moteur, et l'interface n'affichait que l'estimation temporelle du fallback. Nouveau découplage : `update_stats_from_log` lit la ligne d'annonce `#N downloaded: X(4.00%) | left: Y | uploaded: Z` (totaux cumulés + progression + ratio, horodatés dans `last_announce`) et le bloc d'en-tête `Download Speed:` / `Upload Speed:` (vitesses courantes) via `parse_size_after`/`parse_percent_after`. Les champs JSON (`total_uploaded_mb`, `current_upload_speed` en kB/s binaires) sont conservés pour ne pas casser le frontend. **Couplage assumé :** tout changement de `humanReadableSize`/du gabarit de printer.go casse ce parsing — les tests `announce_line_feeds_totals_progress_and_ratio` etc. verrouillent le format attendu. En amont, le moteur n'accepte que `kbps`/`mbps` (base 1024, `input.go::validSpeedSufixes`) et `%|b|kb|mb|gb|tb` pour les tailles : `parse_speed_config` renvoie des **octets/seconde** (l'ancienne version multipliait par 1000 et acceptait `gbps`/`bps` que le moteur rejette), la validation du formulaire (`NewSessionForm.js`) est alignée sur celle du backend (`commands.rs::validate_field`, qui avait déjà raison), et les espaces internes de saisie sont retirés avant envoi (`5 mbps` faisait échouer le `ParseFloat` du moteur).
 - Fichiers volontairement **non versionnés** : `.cache/` (outils locaux), `dist/` (bundle Vite), `node_modules/`, `src-tauri/target/`, `src-tauri/binaries/*` (sidecar téléchargé).
 - **Nettoyage du 13/09/2026 :** ~6,5 Go libérés (`node_modules/`, `src-tauri/target/`, ancien sidecar de 2021, archive de l'historique écrasé, `rsm_ultra.zip`), puis ~400 Ko de sources moteur retirées de ce dépôt (déménagées dans `Endymi0n74/ratio-spoof`). Seul le **Go portable** est conservé dans `.cache/go` (Go n'est pas installé sur la machine) : il sert désormais à construire le dépôt moteur, pas l'interface.
