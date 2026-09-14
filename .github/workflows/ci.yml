@@ -1,10 +1,12 @@
 name: CI
 
-# Intégration continue : clippy (zéro avertissement) et tests du backend à chaque
-# push sur master et à chaque pull request. Version allégée de release.yml : un
-# simple espace réservé `dist/` suffit à compiler (le build complet du front n'est
-# utile qu'à la release), mais le sidecar du moteur est bien récupéré car le build
-# script Tauri l'exige et les tests vérifient sa résolution.
+# Intégration continue : clippy (zéro avertissement), tests du backend et build
+# complet du livrable (`npm run tauri build -- --no-bundle`, la même chaîne que
+# release.yml : engine:fetch → vite build → cargo release) à chaque push sur
+# master et à chaque pull request. Un simple espace réservé `dist/` suffit à
+# compiler pour clippy et les tests, mais la release étant produite par le même
+# `tauri build`, le CI le rejoue : une régression de build (front, build script,
+# ressource sidecar) se voit sur le push, pas seulement au moment de publier.
 on:
   push:
     branches: [master]
@@ -16,12 +18,16 @@ env:
 
 jobs:
   clippy-tests:
-    name: clippy + tests (windows-x64)
+    name: clippy + tests + build (windows-x64)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      # actions/checkout et setup-node v5+ tournent nativement sur Node 24 :
+      # les épingler en v4 déclenchait l'avertissement « Node.js 20 is
+      # deprecated » (runtime forcé sur Node 24). Elles exigent un runner
+      # >= v2.327.1, largement dépassé par les runners windows-latest hébergés.
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -57,3 +63,22 @@ jobs:
       - name: Tests du backend
         working-directory: src-tauri
         run: cargo test --lib
+
+      # Vite et le CLI Tauri ne sont nécessaires que pour cette étape : `npm ci`
+      # est donc positionné ici, après clippy et les tests.
+      - name: Dépendances front
+        run: npm ci
+
+      # Le livrable doit rester constructible en continu, pas seulement au moment
+      # de publier : même commande que release.yml (`beforeBuildCommand` inclus,
+      # qui rejoue engine:fetch — sans effet si le sidecar est déjà conforme —
+      # puis vite build), sans installateur WiX/NSIS.
+      - name: Exécutable release (sans installateur)
+        run: npm run tauri build -- --no-bundle
+
+      - name: Vérification du livrable
+        shell: pwsh
+        run: |
+          $exe = "src-tauri/target/release/ratio-spoof-manager.exe"
+          if (-not (Test-Path $exe)) { throw "livrable manquant : $exe" }
+          Get-Item $exe | Select-Object Name, Length, LastWriteTime
