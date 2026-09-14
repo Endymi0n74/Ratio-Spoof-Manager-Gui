@@ -6,7 +6,7 @@ Le moteur Go n'est **pas** embarqué sous forme de sources ni de binaire version
 téléchargé depuis la release du dépôt dédié [Endymi0n74/ratio-spoof](https://github.com/Endymi0n74/ratio-spoof),
 seule source de vérité du sidecar (voir [Moteur & sidecar](#moteur--sidecar)).
 
-![Version](https://img.shields.io/badge/version-2.0.0-blue)
+![Version](https://img.shields.io/badge/version-2.0.1-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ## Fonctionnalités
@@ -114,7 +114,7 @@ Quatre assets sont publiés :
 Contenu de l'archive, qui se décompresse et se lance sans installation :
 
 ```
-ratio-spoof-manager-v2.0.0-windows-x64/
+ratio-spoof-manager-v2.0.1-windows-x64/
 ├─ ratio-spoof-manager.exe
 ├─ binaries/
 │  └─ ratio-spoof-x86_64-pc-windows-msvc.exe   # trouvé automatiquement par l'application

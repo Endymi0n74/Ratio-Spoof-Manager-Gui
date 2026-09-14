@@ -53,7 +53,7 @@ class App {
           <div class='app-logo'>RSM</div>
           <div>
             <span class='app-title'>Ratio Spoof Manager</span>
-            <span class='app-version'>v2.0.0</span>
+            <span class='app-version'>v2.0.1</span>
           </div>
         </div>
         <div class='app-header-right'>

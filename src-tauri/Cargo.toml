@@ -1,6 +1,6 @@
 [package]
 name = "ratio-spoof-manager"
-version = "2.0.0"
+version = "2.0.1"
 description = "Modern GUI for ratio-spoof"
 authors = ["Endymi0n74"]
 license = "MIT"
