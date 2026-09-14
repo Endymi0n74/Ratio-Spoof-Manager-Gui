@@ -1,7 +1,7 @@
 # Memory — Ratio Spoof Manager (Tauri)
 
 - **Chemin :** `D:\Codex\ratio-spoof-manager-tauri`
-- **Version :** 2.0.2 (`package.json`, `src-tauri/tauri.conf.json`)
+- **Version :** 2.0.3 (`package.json`, `src-tauri/tauri.conf.json`)
 - **Quoi :** GUI desktop (**Tauri 2 + Rust + HTML/CSS/JS/Vite**) pour `ratio-spoof`, le spoofeur de ratio Real-Debrid. Rewrite de l'interface Tkinter d'origine (GUI Python historique, dont le `CHANGELOG.md` est archivé dans le dépôt moteur).
 - **Doc principale :** [`README.md`](README.md)
 
@@ -21,7 +21,7 @@
 ## Dépôt
 
 - **Dépôt moteur (source de vérité du sidecar) :** <https://github.com/Endymi0n74/ratio-spoof> — créé le 13/09/2026, historique repris de `engine/` via `git subtree split -P engine`, CI + workflow de release, release courante `v1.9.1`.
-- **GitHub :** <https://github.com/Endymi0n74/Ratio-Spoof-Manager-Gui> — renommé **deux fois** le 13/09/2026 (`Ratio_Spoof_Gui` → `ratio-spoof-manager-tauri` → `Ratio-Spoof-Manager-Gui`), branche unique `master`. Le dossier de travail et l'ancien remote gardent la trace du nom intermédiaire ; l'`origin` du dépôt local a été réaligné sur le nom courant. Release **[v2.0.0](https://github.com/Endymi0n74/Ratio-Spoof-Manager-Gui/releases/tag/v2.0.0)** publiée le 13/09/2026 : paquet portable Windows (`ratio-spoof-manager.exe` + sidecar + `SHA256SUMS.txt`). **2.0.1 (14/09/2026) :** correctif du crash 0xc0000409 au clic sur « Arrêter » (commande asynchrone + garde-fou IPC + état « stopping »). **2.0.2 (14/09/2026) :** fenêtre « A propos » (version + commit figés dans le binaire), CI qui vérifie désormais le build release, actions GitHub passées sur Node 24, suppression du vestige `src/app.jsx`.
+- **GitHub :** <https://github.com/Endymi0n74/Ratio-Spoof-Manager-Gui> — renommé **deux fois** le 13/09/2026 (`Ratio_Spoof_Gui` → `ratio-spoof-manager-tauri` → `Ratio-Spoof-Manager-Gui`), branche unique `master`. Le dossier de travail et l'ancien remote gardent la trace du nom intermédiaire ; l'`origin` du dépôt local a été réaligné sur le nom courant. Release **[v2.0.0](https://github.com/Endymi0n74/Ratio-Spoof-Manager-Gui/releases/tag/v2.0.0)** publiée le 13/09/2026 : paquet portable Windows (`ratio-spoof-manager.exe` + sidecar + `SHA256SUMS.txt`). **2.0.1 (14/09/2026) :** correctif du crash 0xc0000409 au clic sur « Arrêter » (commande asynchrone + garde-fou IPC + état « stopping »). **2.0.2 (14/09/2026) :** fenêtre « A propos » (version + commit figés dans le binaire), CI qui vérifie désormais le build release, actions GitHub passées sur Node 24, suppression du vestige `src/app.jsx`. **2.0.3 (14/09/2026) :** les statistiques affichées viennent enfin du moteur — réécriture du parsing sur le format réel de `printer.go` (unités IEC sans espace), `parse_speed_config` en octets/seconde, validation du formulaire alignée sur le backend.
 - `origin` du dépôt local pointe sur ce nom ; l'ancienne adresse est redirigée par GitHub.
 - Historique : le `master` d'origine (96 commits — moteur ratio-spoof depuis 2023 + GUI Python) a été écrasé par un push forcé le 13/09/2026, à la demande. Le moteur vit depuis dans le dépôt `Endymi0n74/ratio-spoof` (historique repris par `git subtree split`), les tags et la release `gui-v1.2.3` ont été supprimés ensuite.
 - Le tag annoté `v2.0.0` pointait sur `9cd168e` (« interface complete v2.0.0 »), soit 3 commits en retard : il n'avait jamais été poussé, il a donc été déplacé sur le commit du nettoyage (`0a38164`) puis publié avec la release.
