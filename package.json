@@ -1,6 +1,6 @@
 {
   "name": "ratio-spoof-manager",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Modern GUI for ratio-spoof built with Tauri",
   "type": "module",
   "scripts": {
