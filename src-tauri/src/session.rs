@@ -93,7 +93,10 @@ pub struct SessionView {
 
 pub struct SessionManager {
     sessions: Arc<DashMap<String, SessionState>>,
-    processes: Arc<DashMap<String, tokio::task::JoinHandle<()>>>,
+    // Handle Tauri (et non tokio) : les tâches sont créées via
+    // `tauri::async_runtime::spawn` pour rester valables depuis un thread hors
+    // runtime (cf. régression 0xc0000409).
+    processes: Arc<DashMap<String, tauri::async_runtime::JoinHandle<()>>>,
     /// Pid du moteur par session : permet de lui adresser un signal d'arrêt
     /// depuis `stop_session`, indépendamment de la tâche qui lit sa sortie.
     pids: Arc<DashMap<String, u32>>,
@@ -156,11 +159,18 @@ impl SessionManager {
         let pids = self.pids.clone();
         let id_clone = id.clone();
 
-        let handle = tokio::spawn(async move {
+        // `tauri::async_runtime::spawn` plutôt que `tokio::spawn` : la tâche
+        // doit pouvoir être créée même depuis un thread hors runtime (commande
+        // synchrone, tests) au lieu de paniquer.
+        let handle = tauri::async_runtime::spawn(async move {
             match ProcessHandle::spawn(&engine, args, None).await {
                 Ok(mut proc) => {
-                    {
-                        let mut s = sessions.get_mut(&id_clone).unwrap();
+                    // La session peut disparaître à tout instant (bouton ✕,
+                    // arrêt demandé pendant le démarrage) : chaque accès se
+                    // fait donc sans `unwrap()`, une panique ici tuerait
+                    // l'application entière. Si la session a été supprimée, le
+                    // drop de `proc` (`kill_on_drop`) tue le moteur.
+                    if let Some(mut s) = sessions.get_mut(&id_clone) {
                         s.status = SessionStatus::Running;
                         s.last_update = Local::now();
                         push_log(&mut s, LogLevel::Info, "manager", "Moteur démarré");
@@ -175,27 +185,28 @@ impl SessionManager {
                     }
 
                     while let Some(line) = proc.output_rx.recv().await {
-                        let mut s = sessions.get_mut(&id_clone).unwrap();
-                        let log = parse_log_line(&line);
-                        update_stats_from_log(&mut s, &log);
-                        push_log(&mut s, log.level, &log.source, &log.message);
+                        if let Some(mut s) = sessions.get_mut(&id_clone) {
+                            let log = parse_log_line(&line);
+                            update_stats_from_log(&mut s, &log);
+                            push_log(&mut s, log.level, &log.source, &log.message);
+                        }
                     }
 
                     let _ = proc.child.wait().await;
                     // Le moteur a quitté : plus rien à signaler pour cette session.
                     pids.remove(&id_clone);
-                    {
-                        let mut s = sessions.get_mut(&id_clone).unwrap();
+                    if let Some(mut s) = sessions.get_mut(&id_clone) {
                         s.status = SessionStatus::Stopped;
                         s.last_update = Local::now();
                         push_log(&mut s, LogLevel::Info, "manager", "Moteur arrêté");
                     }
                 }
                 Err(e) => {
-                    let mut s = sessions.get_mut(&id_clone).unwrap();
-                    s.status = SessionStatus::Error(e.to_string());
-                    s.last_update = Local::now();
-                    push_log(&mut s, LogLevel::Error, "manager", &format!("Échec du démarrage: {}", e));
+                    if let Some(mut s) = sessions.get_mut(&id_clone) {
+                        s.status = SessionStatus::Error(e.to_string());
+                        s.last_update = Local::now();
+                        push_log(&mut s, LogLevel::Error, "manager", &format!("Échec du démarrage: {}", e));
+                    }
                 }
             }
         });
@@ -225,6 +236,13 @@ impl SessionManager {
                 return Ok(());
             }
         };
+
+        // Session inconnue du backend (restaurée côté interface uniquement) :
+        // un `ok_or_else` ici transformerait le clic en erreur 500 sans
+        // information — la session n'a de toute façon rien à arrêter.
+        if !self.sessions.contains_key(id) {
+            return Ok(());
+        }
 
         {
             let mut s = self
@@ -258,10 +276,17 @@ impl SessionManager {
 
         // Filet de sécurité : un moteur coincé dans sa boucle de retry réseau peut
         // ignorer le signal. On lui laisse le délai de grâce, puis on le tue.
+        //
+        // `tauri::async_runtime::spawn` et non `tokio::spawn` : `stop_session`
+        // est appelée depuis le dispatch IPC, qui peut ne pas être un worker
+        // tokio — un `tokio::spawn` y panique (« Must be called from the context
+        // of a Tokio 1.x runtime ») et, la panique remontant dans le rappel
+        // WebView2 FFI, abortait le processus (crash 0xc0000409 au clic sur
+        // Arrêter). Elle part donc sur le runtime global de Tauri.
         let pids = self.pids.clone();
         let sessions = self.sessions.clone();
         let id = id.to_string();
-        tokio::spawn(async move {
+        tauri::async_runtime::spawn(async move {
             tokio::time::sleep(STOP_GRACE_PERIOD).await;
             if !pids.contains_key(&id) {
                 return; // déjà arrêté proprement
@@ -286,10 +311,10 @@ impl SessionManager {
     /// Supprime une session : tue son moteur s'il vit encore, puis retire
     /// l'état de la carte et des listes.
     ///
-    /// Le bouton « supprimer » n'apparaît que sur une carte arrêtée, mais la
-    /// commande reste défensive : un moteur encore vivant (session en pause ou
-    /// démarrage en cours) est tué sans ménagement — supprimer est une action
-    /// explicite de destruction, l'arrêt propre reste le rôle du bouton Arrêter.
+    /// Idempotente : supprimer une session déjà absente réussit. Les sessions
+    /// restaurées du localStorage n'existent que côté interface (leurs moteurs
+    /// sont morts avec l'application précédente) et leur ✕ doit fonctionner
+    /// comme celui d'une session que le backend connaît.
     pub fn delete_session(&self, id: &str) -> Result<()> {
         // La tâche de lecture est annulée avant toute autre opération : une fois
         // l'état retiré, ses `get_mut().unwrap()` ne doivent plus jamais être
@@ -306,10 +331,8 @@ impl SessionManager {
                 eprintln!("moteur déjà absent lors de la suppression (pid {pid}) : {e}");
             }
         }
-        self.sessions
-            .remove(id)
-            .map(|_| ())
-            .ok_or_else(|| anyhow!("session inconnue : {id}"))
+        let _ = self.sessions.remove(id);
+        Ok(())
     }
 
     /// Tue le moteur immédiatement (signal refusé par le système).
@@ -779,10 +802,11 @@ mod tests {
         }
     }
 
-    /// Supprimer doit retirer la session des listes : une commande qui ne fait
-    /// qu'effacer le statut laisserait la carte à l'écran pour toujours.
+    /// Supprimer doit retirer la session des listes — et rester sûr à rejouer :
+    /// une session restaurée côté interface n'existe que là, et son ✕ ne doit
+    /// pas se plaindre que le backend l'ignore.
     #[test]
-    fn delete_removes_the_session_and_fails_on_unknown_id() {
+    fn delete_removes_the_session_and_is_idempotent() {
         let manager = SessionManager::new();
         manager
             .sessions
@@ -795,10 +819,10 @@ mod tests {
             !manager.sessions.contains_key("s1"),
             "la session supprimée ne doit plus apparaître"
         );
-        assert!(
-            manager.delete_session("s1").is_err(),
-            "supprimer une session inconnue doit échouer"
-        );
+        manager
+            .delete_session("s1")
+            .expect("supprimer une session absente doit réussir aussi");
+        assert!(manager.sessions.get("s1").is_none());
     }
 
     /// La perte de la garantie anti-orphelin ne peut pas se contenter d'une
@@ -830,5 +854,62 @@ mod tests {
         let before = sessions.get("s1").unwrap().logs.len();
         log_orphan_protection(&sessions, "s1", None);
         assert_eq!(sessions.get("s1").unwrap().logs.len(), before);
+    }
+
+    /// Régression du crash 0xc0000409 : cliquer sur « Arrêter » fermait
+    /// l'application entière. `stop_session` était exécutée inline dans le
+    /// rappel IPC de WebView2 (thread hors runtime tokio) et y appelait
+    /// `tokio::spawn` — panique immédiate, qui ne peut pas se dérouler hors
+    /// d'une limite `extern "system"` et abortait le processus.
+    ///
+    /// Le test reproduit les deux conditions du crash : appel depuis un simple
+    /// thread (pas un worker tokio) sur une session dont le moteur a un pid.
+    /// La simulation d'un vrai moteur n'étant pas triviale, le pid est
+    /// volontairement inexistant : `request_graceful_stop` échoue, la branche
+    /// de secours tue, la session passe « arrêté » — et surtout rien ne
+    /// panique. Avec l'ancien code, ce test mourrait avant l'assertion.
+    #[test]
+    fn stop_session_from_a_non_runtime_thread_does_not_panic() {
+        let manager = SessionManager::new();
+        manager.sessions.insert("s1".to_string(), session_with_id("s1"));
+        // pid fictif : la session croit avoir un moteur vivant, comme au moment
+        // du crash, mais rien de réel à signaler.
+        manager.pids.insert("s1".to_string(), 999_999);
+
+        let result = manager.stop_session("s1");
+        assert!(
+            result.is_ok(),
+            "arrêter une session dont le moteur est déjà parti doit réussir : {:?}",
+            result.err()
+        );
+        assert_eq!(
+            manager.sessions.get("s1").map(|s| s.status.clone()),
+            Some(SessionStatus::Stopping),
+            "sans moteur réel à observer, la session reste « arrêt en cours » : \
+             c'est la tâche de lecture du vrai moteur qui prononce l'arrêt final"
+        );
+        let last = manager.sessions.get("s1").and_then(|s| s.logs.last().cloned());
+        assert!(
+            matches!(last.map(|l| l.level), Some(LogLevel::Error | LogLevel::Warn)),
+            "l'échec du signal puis de la mise à mort doit être journalisé"
+        );
+    }
+
+    /// Arrêter deux fois (double-clic sur le bouton) ou une session inconnue
+    /// (restaurée côté interface uniquement) doit rester sans effet ni erreur :
+    /// le clic ne doit jamais se transformer en échec bloquant.
+    #[test]
+    fn stop_session_is_idempotent_and_tolerates_unknown_ids() {
+        let manager = SessionManager::new();
+        manager.sessions.insert("s1".to_string(), session_with_id("s1"));
+        manager
+            .stop_session("s1")
+            .expect("premier arrêt (sans moteur lancé) doit réussir");
+        manager
+            .stop_session("s1")
+            .expect("second arrêt doit réussir aussi");
+        manager
+            .stop_session("inconnue")
+            .expect("arrêter une session que le backend ignore doit réussir");
     }
 }

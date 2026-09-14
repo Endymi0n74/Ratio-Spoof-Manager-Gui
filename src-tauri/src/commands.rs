@@ -63,10 +63,17 @@ pub async fn launch_session(
 }
 
 #[tauri::command]
-pub fn stop_session(
+pub async fn stop_session(
     id: String,
     manager: State<'_, SessionManager>,
 ) -> Result<ApiResponse<()>, String> {
+    // Asynchrone, et pas synchrone : une commande synchrone s'exécute inline
+    // dans le rappel IPC de WebView2 (thread UI, limite FFI). Tout bug y
+    // paniquant ne peut pas se dérouler hors de la limite `extern "system"`
+    // et aborte tout le processus (crash 0xc0000409 constaté au clic sur
+    // Arrêter). Une commande asynchrone s'exécute sur un worker du runtime
+    // tokio, où une panique éventuelle ne coûte que la commande elle-même —
+    // avec le garde-fou de lib.rs en seconde ligne de défense.
     match manager.stop_session(&id) {
         Ok(_) => Ok(ApiResponse::ok(())),
         Err(e) => Ok(ApiResponse::err(e.to_string())),

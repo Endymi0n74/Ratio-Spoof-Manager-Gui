@@ -205,7 +205,10 @@ export class SessionCard {
   }
 
   getStatusClass(status) {
-    const map = { running: 'running', paused: 'paused', stopped: 'stopped', error: 'error' };
+    // « stopping » : arrêt demandé au moteur (annonce finale en cours).
+    // S'il disparaissait de la carte, le point repasserait à « arrêté » avant
+    // l'accord du backend.
+    const map = { running: 'running', paused: 'paused', stopping: 'stopping', stopped: 'stopped', error: 'error' };
     return map[status] || 'stopped';
   }
 
@@ -213,6 +216,7 @@ export class SessionCard {
     const map = {
       running: 'En cours',
       paused: 'En pause',
+      stopping: 'Arret...',
       stopped: 'Arrete',
       starting: 'Demarrage...',
       error: 'Erreur'
@@ -221,7 +225,12 @@ export class SessionCard {
   }
 
   renderActions(status) {
-    if (status === 'running') {
+    if (status === 'stopping') {
+      // Arrêt en cours : aucune action possible tant que le moteur n'a pas
+      // répondu (bouton figé = double-clic impossible, session qui reste
+      // « fantôme » impossible).
+      return '';
+    } else if (status === 'running') {
       return `
         <button class="btn-icon btn-pause" title="Pause">${this.icons.pause || '&#10074;&#10074;'}</button>
         <button class="btn-icon danger btn-stop" title="Arreter">${this.icons.stop || '&#9632;'}</button>

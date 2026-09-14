@@ -488,6 +488,7 @@ html, body {
 
 .session-status-dot.running { background: var(--success); box-shadow: 0 0 6px var(--success); }
 .session-status-dot.paused { background: var(--warning); }
+.session-status-dot.stopping { background: var(--warning); animation: pulse 1s ease-in-out infinite; }
 .session-status-dot.stopped { background: var(--text-muted); }
 .session-status-dot.error { background: var(--danger); }
 

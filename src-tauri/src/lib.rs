@@ -1,4 +1,5 @@
 mod commands;
+mod ipc_guard;
 mod session;
 mod settings;
 mod process;
@@ -14,7 +15,10 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .manage(SessionManager::new())
         .manage(AppSettings::load())
-        .invoke_handler(tauri::generate_handler![
+        // Garde-fou de panique autour du dispatch IPC : sans lui, une panique
+        // dans une commande aborte tout le processus depuis la limite FFI de
+        // WebView2 (crash 0xc0000409 — cf. ipc_guard.rs).
+        .invoke_handler(ipc_guard::guarded_invoke_handler(tauri::generate_handler![
             commands::launch_session,
             commands::stop_session,
             commands::delete_session,
@@ -31,7 +35,7 @@ pub fn run() {
             commands::validate_field,
             commands::minimize_window,
             commands::quit_app,
-        ])
+        ]))
         .setup(|_app| {
             #[cfg(debug_assertions)]
             {
