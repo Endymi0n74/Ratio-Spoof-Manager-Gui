@@ -1065,6 +1065,49 @@ html, body {
   border-top: 1px solid var(--border);
 }
 
+/* ===== A propos ===== */
+.about-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.about-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 9px 12px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius);
+}
+
+.about-label {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.about-value {
+  font-weight: 600;
+  text-align: right;
+  word-break: break-word;
+  /* Le commit doit pouvoir être copié à la main pour retrouver la source. */
+  user-select: text;
+}
+
+.about-mono {
+  font-family: 'Cascadia Mono', Consolas, 'Courier New', monospace;
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.about-hint {
+  margin-top: 14px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 /* Theme toggle */
 .theme-toggle {
   display: flex;

@@ -333,3 +333,54 @@ pub async fn quit_app(
     app.exit(0);
     Ok(ApiResponse::ok(()))
 }
+
+/// Identité du binaire livré : version déclarée par le crate et commit source
+/// figé à la compilation par `build.rs`. Sert à tracer les livraisons (fenêtre
+/// « A propos ») sans dépendre du dépôt local de la machine qui exécute l'app.
+#[derive(Debug, Serialize)]
+pub struct BuildInfo {
+    pub version: String,
+    pub commit: String,
+    pub commit_date: String,
+    /// Vrai si des modifications non commitées étaient présentes au moment de
+    /// la compilation : le binaire ne correspond alors à aucun commit exact.
+    pub dirty: bool,
+}
+
+fn build_info() -> BuildInfo {
+    BuildInfo {
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        commit: env!("RSM_COMMIT").to_string(),
+        commit_date: env!("RSM_COMMIT_DATE").to_string(),
+        dirty: env!("RSM_DIRTY") == "1",
+    }
+}
+
+#[tauri::command]
+pub fn get_build_info() -> Result<ApiResponse<BuildInfo>, String> {
+    Ok(ApiResponse::ok(build_info()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Le binaire doit pouvoir dire d'où il vient : la version vient du crate,
+    /// le commit et sa date sont posés par `build.rs`. Hors dépôt git, `build.rs`
+    /// substitue un libellé explicite — jamais une valeur vide, qui laisserait un
+    /// trou dans la traçabilité.
+    #[test]
+    fn build_info_identifies_the_binary() {
+        let info = build_info();
+        assert_eq!(
+            info.version,
+            env!("CARGO_PKG_VERSION"),
+            "la version doit être celle déclarée par le crate"
+        );
+        assert!(!info.commit.trim().is_empty(), "commit manquant");
+        assert!(
+            !info.commit_date.trim().is_empty(),
+            "date de commit manquante"
+        );
+    }
+}

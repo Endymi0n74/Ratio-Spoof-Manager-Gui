@@ -81,6 +81,9 @@ class App {
     this.startPolling();
     this.setupGlobalEvents();
     this.requestNotificationPermission();
+    // Identité du binaire (version + commit) : remplie dès que le backend
+    // répond ; le bandeau garde sa valeur de repli en attendant.
+    this.loadBuildInfo();
   }
 
   loadPersistedSessions() {
@@ -180,12 +183,13 @@ class App {
           <div class='app-logo'>RSM</div>
           <div>
             <span class='app-title'>Ratio Spoof Manager</span>
-            <span class='app-version'>v2.0.1</span>
+            <span class='app-version' id='app-version'>v2.0.1</span>
           </div>
         </div>
         <div class='app-header-right'>
           <button class='btn btn-secondary' id='btn-mini' title='Mini mode'>□</button>
           <button class='btn btn-secondary' id='btn-tray' title='Minimiser'>_</button>
+          <button class='btn btn-secondary' id='btn-about' title='A propos du binaire'>A propos</button>
           <button class='btn btn-secondary' id='btn-settings'>Parametres</button>
         </div>
       </header>
@@ -301,6 +305,42 @@ class App {
           </div>
         </div>
       </div>
+      <div class='modal-overlay' id='about-modal'>
+        <div class='modal'>
+          <div class='modal-header'>
+            <div class='modal-title'>A propos</div>
+            <button class='modal-close' id='about-close'>&times;</button>
+          </div>
+          <div class='modal-body'>
+            <div class='about-grid'>
+              <div class='about-row'>
+                <span class='about-label'>Version</span>
+                <span class='about-value' id='about-version'>inconnue</span>
+              </div>
+              <div class='about-row'>
+                <span class='about-label'>Commit</span>
+                <span class='about-value about-mono' id='about-commit'>inconnu</span>
+              </div>
+              <div class='about-row'>
+                <span class='about-label'>Date du commit</span>
+                <span class='about-value' id='about-date'>inconnue</span>
+              </div>
+              <div class='about-row'>
+                <span class='about-label'>Etat des sources</span>
+                <span class='about-value' id='about-state'>inconnu</span>
+              </div>
+            </div>
+            <p class='about-hint'>
+              Ces informations sont figees dans l'executable au moment de la compilation :
+              elles identifient la livraison qui tourne, independamment du depot present sur
+              cette machine. Le commit est selectionnable pour etre copie.
+            </p>
+          </div>
+          <div class='modal-footer'>
+            <button class='btn btn-primary' id='about-ok'>Fermer</button>
+          </div>
+        </div>
+      </div>
     `;
 
     const formContainer = document.getElementById('new-session-container');
@@ -320,6 +360,7 @@ class App {
     this.setupTrayButton();
     this.setupMiniButton();
     document.getElementById('btn-settings')?.addEventListener('click', () => this.openSettings());
+    this.setupAboutModal();
   }
 
   initGlobalChart() {
@@ -428,7 +469,10 @@ class App {
         if (dropZone) { dropZone.scrollIntoView({ behavior: 'smooth', block: 'center' }); dropZone.style.borderColor = 'var(--accent)'; setTimeout(() => dropZone.style.borderColor = '', 800); }
       }
       if (e.ctrlKey && e.key === ',') { e.preventDefault(); this.openSettings(); }
-      if (e.key === 'Escape') { document.getElementById('settings-modal')?.classList.remove('active'); }
+      if (e.key === 'Escape') {
+        document.getElementById('settings-modal')?.classList.remove('active');
+        document.getElementById('about-modal')?.classList.remove('active');
+      }
       if (e.ctrlKey && e.key === 'q') { e.preventDefault(); this.quitApp(); }
       if (e.ctrlKey && e.key === 'f') { e.preventDefault(); document.getElementById('session-search')?.focus(); }
       if (e.ctrlKey && e.key === 'm') { e.preventDefault(); document.getElementById('btn-mini')?.click(); }
@@ -830,6 +874,44 @@ class App {
         await Notification.requestPermission();
       }
     } catch (e) {}
+  }
+
+  // Identité du binaire : la version vient du crate, le commit est fige dans
+  // l'executable a la compilation (src-tauri/build.rs). Le bandeau et la fenetre
+  // « A propos » decrivent donc la livraison reellement executee, pas l'etat du
+  // depot local (qui peut etre en avance ou en retard sur le binaire).
+  async loadBuildInfo() {
+    try {
+      const res = await invoke('get_build_info');
+      if (res.success && res.data) this.applyBuildInfo(res.data);
+    } catch (e) {
+      console.error('Informations de build indisponibles :', e);
+    }
+  }
+
+  applyBuildInfo(info) {
+    this.buildInfo = info;
+    const version = 'v' + (info.version || '?');
+    const versionEl = document.getElementById('app-version');
+    if (versionEl) versionEl.textContent = version;
+    const set = (id, text) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = text;
+    };
+    set('about-version', version);
+    set('about-commit', info.commit + (info.dirty ? ' + modifications locales' : ''));
+    set('about-date', info.commit_date || 'inconnue');
+    set('about-state', info.dirty ? 'Modifications locales non commitees' : 'Propre (identique au commit)');
+  }
+
+  setupAboutModal() {
+    const modal = document.getElementById('about-modal');
+    if (!modal) return;
+    const close = () => modal.classList.remove('active');
+    document.getElementById('about-close')?.addEventListener('click', close);
+    document.getElementById('about-ok')?.addEventListener('click', close);
+    modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+    document.getElementById('btn-about')?.addEventListener('click', () => modal.classList.add('active'));
   }
 
   async loadSettings() {

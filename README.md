@@ -17,6 +17,7 @@ seule source de vérité du sidecar (voir [Moteur & sidecar](#moteur--sidecar)).
 - **Drag & Drop** : glissez-déposez vos .torrent
 - **Logs colorés** : parsing intelligent des sorties du moteur Go
 - **Stats globales** : upload total, ratio moyen, sessions actives
+- **Traçabilité de livraison** : fenêtre *A propos* — version et commit git figés dans le binaire à la compilation
 - **Notifications toast** : feedback non bloquant
 - **Design dark moderne** : interface native GPU-accelerée
 
@@ -165,6 +166,7 @@ publié met la release à jour au lieu d'échouer.
 | `src-tauri/src/session.rs` | Gestion multi-sessions et parsing |
 | `src-tauri/src/commands.rs` | Commandes IPC exposées au frontend |
 | `src-tauri/src/process.rs` | Spawn et contrôle du binaire Go |
+| `src-tauri/build.rs` | Identité de livraison (commit git + date) figée à la compilation |
 
 ## Cycle de vie du moteur
 

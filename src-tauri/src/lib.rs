@@ -29,6 +29,7 @@ pub fn run() {
             commands::get_session_logs,
             commands::get_settings,
             commands::save_settings,
+            commands::get_build_info,
             commands::pick_torrent,
             commands::pick_executable,
             commands::get_presets,
