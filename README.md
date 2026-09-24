@@ -9,6 +9,8 @@ seule source de vérité du sidecar (voir [Moteur & sidecar](#moteur--sidecar)).
 ![Version](https://img.shields.io/badge/version-2.0.3-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
+**🇫🇷 Français** · [🇬🇧 English](README.en.md)
+
 ## Fonctionnalités
 
 - **Multi-sessions** : supervisez plusieurs torrents simultanément
