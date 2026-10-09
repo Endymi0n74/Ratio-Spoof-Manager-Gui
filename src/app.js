@@ -68,6 +68,9 @@ class App {
 
   async init() {
     await this.loadSettings();
+    // Réglage persisté ; absent du fichier (jamais sauvegardé avant la
+    // correction de `save_settings`) = activé par défaut.
+    if (this.settings) this.autoRestartEnabled = this.settings.auto_restart !== false;
     await this.loadPresets();
     this.loadCustomPresets();
     this.loadTheme();
@@ -515,7 +518,9 @@ class App {
       const polling = parseFloat(document.getElementById('setting-polling')?.value) || 2;
       const ratioTarget = parseFloat(document.getElementById('setting-ratio-target')?.value) || 2.0;
       const newSettings = {
-        default_port: port,
+        // `default_port` est un u16 côté Rust : envoyé en chaîne, la
+        // désérialisation échouait et rien n'était persisté.
+        default_port: parseInt(port, 10) || 8999,
         default_client: client,
         polling_interval_sec: polling,
         ratio_target: ratioTarget,

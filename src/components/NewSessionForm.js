@@ -53,7 +53,14 @@ export class NewSessionForm {
         </div>
         <div class="form-group">
           <label class="form-label">Vitesse DL</label>
-          <input type="text" class="form-input" id="field-dl-speed" value="${this.settings?.default_dl_speed || '0kbps'}" placeholder="ex: 10mbps">
+          <div class="speed-row">
+            <input type="text" class="form-input" id="field-dl-speed" value="${this.settings?.default_dl_speed || ''}" placeholder="ex: 10" autocomplete="off">
+            <select class="form-select speed-unit" id="unit-dl-speed" aria-label="Unite vitesse DL">
+              <option value="">unite</option>
+              <option value="kbps">kbps</option>
+              <option value="mbps">mbps</option>
+            </select>
+          </div>
           <div class="validation-feedback" id="feedback-dl-speed"></div>
         </div>
       </div>
@@ -66,7 +73,14 @@ export class NewSessionForm {
         </div>
         <div class="form-group">
           <label class="form-label">Vitesse UL</label>
-          <input type="text" class="form-input" id="field-ul-speed" value="${this.settings?.default_ul_speed || '5mbps'}" placeholder="ex: 5mbps">
+          <div class="speed-row">
+            <input type="text" class="form-input" id="field-ul-speed" value="${this.settings?.default_ul_speed || ''}" placeholder="ex: 5" autocomplete="off">
+            <select class="form-select speed-unit" id="unit-ul-speed" aria-label="Unite vitesse UL">
+              <option value="">unite</option>
+              <option value="kbps">kbps</option>
+              <option value="mbps">mbps</option>
+            </select>
+          </div>
           <div class="validation-feedback" id="feedback-ul-speed"></div>
         </div>
       </div>
@@ -147,6 +161,10 @@ export class NewSessionForm {
     ['dl', 'dl-speed', 'ul', 'ul-speed', 'port'].forEach(field => {
       const el = document.getElementById(`field-${field}`);
       if (el) el.addEventListener('input', () => this.validateField(field));
+      // L'unité se choisit dans le menu déroulant : changer de kbps/mbps doit
+      // rejouer la validation du champ associé.
+      const unit = document.getElementById(`unit-${field}`);
+      if (unit) unit.addEventListener('change', () => this.validateField(field));
     });
 
     document.getElementById('field-client')?.addEventListener('change', (e) => {
@@ -184,9 +202,9 @@ export class NewSessionForm {
       description: 'Preset personnalise',
       config: {
         downloaded: document.getElementById('field-dl').value,
-        dl_speed: document.getElementById('field-dl-speed').value,
+        dl_speed: this.readSpeedField('dl-speed') || '',
         uploaded: document.getElementById('field-ul').value,
-        ul_speed: document.getElementById('field-ul-speed').value,
+        ul_speed: this.readSpeedField('ul-speed') || '',
         port: document.getElementById('field-port').value,
         client: document.getElementById('field-client').value,
       }
@@ -200,9 +218,9 @@ export class NewSessionForm {
     if (!preset) return;
 
     document.getElementById('field-dl').value = preset.config.downloaded;
-    document.getElementById('field-dl-speed').value = preset.config.dl_speed;
+    this.setSpeedField('dl-speed', preset.config.dl_speed);
     document.getElementById('field-ul').value = preset.config.uploaded;
-    document.getElementById('field-ul-speed').value = preset.config.ul_speed;
+    this.setSpeedField('ul-speed', preset.config.ul_speed);
     document.getElementById('field-port').value = preset.config.port;
 
     if (preset.config.client) {
@@ -260,10 +278,76 @@ export class NewSessionForm {
     } catch (e) { console.error(e); }
   }
 
-  async validateField(field) {
+  /// Lit une vitesse en deux temps : le nombre dans le champ, l'unité dans le
+  /// menu déroulant (le moteur n'accepte que `kbps` et `mbps`).
+  ///
+  /// Retourne :
+  /// - `''` si nombre et unité sont vides (champ non renseigné) ;
+  /// - la valeur normalisée prête pour le moteur (`« 5mbps »`) ;
+  /// - `null` si la saisie est incomplète ou invalide.
+  ///
+  /// Tolérance : « 5mbps » saisi d'un bloc reste accepté, l'unité rejoint
+  /// alors le menu déroulant.
+  readSpeedField(field) {
+    const el = document.getElementById(`field-${field}`);
+    const unitEl = document.getElementById(`unit-${field}`);
+    if (!el || !unitEl) return null;
+
+    const raw = el.value.trim().toLowerCase().replace(',', '.').replace(/\s+/g, '');
+    if (!raw && !unitEl.value) return '';
+
+    const m = raw.match(/^(\d+(?:\.\d+)?)(kbps|mbps)?$/);
+    if (!m) return null;
+
+    if (m[2]) unitEl.value = m[2];
+    const unit = m[2] || unitEl.value;
+    return unit ? m[1] + unit : null;
+  }
+
+  /// Remplit nombre + unité à partir d'une valeur complète (« 0kbps »), pour
+  /// les presets et la restauration des réglages.
+  setSpeedField(field, value) {
+    const el = document.getElementById(`field-${field}`);
+    const unitEl = document.getElementById(`unit-${field}`);
+    if (!el || !unitEl) return;
+
+    const m = String(value ?? '')
+      .trim().toLowerCase().replace(',', '.').replace(/\s+/g, '')
+      .match(/^(\d+(?:\.\d+)?)(kbps|mbps)?$/);
+    el.value = m ? m[1] : '';
+    unitEl.value = m && m[2] ? m[2] : '';
+  }
+
+  async validateField(field, force = false) {
     const el = document.getElementById(`field-${field}`);
     const feedback = document.getElementById(`feedback-${field}`);
     if (!el || !feedback) return;
+
+    // Vitesses : nombre et unité sont lus ensemble (champ + menu déroulant).
+    if (field.includes('speed')) {
+      const speed = this.readSpeedField(field);
+
+      if (speed === '') {
+        // Vide des deux côtés : état neutre tant que l'utilisateur n'a rien
+        // saisi — le « requis » n'apparaît qu'au lancement (`force`), pour ne
+        // pas afficher deux champs en rouge dès l'ouverture du formulaire.
+        el.classList.toggle('invalid', force);
+        el.classList.remove('valid');
+        feedback.className = force ? 'validation-feedback error' : 'validation-feedback';
+        feedback.textContent = force ? 'Requis : ex 5 puis mbps' : '';
+        this.validationState[field] = false;
+        return;
+      }
+
+      // Le moteur n'accepte que kbps et mbps (input.go : validSpeedSufixes).
+      const valid = speed !== null;
+      el.classList.toggle('valid', valid);
+      el.classList.toggle('invalid', !valid);
+      feedback.className = `validation-feedback ${valid ? 'success' : 'error'}`;
+      feedback.textContent = valid ? 'OK' : 'Nombre ou unité invalide (ex: 5 puis mbps)';
+      this.validationState[field] = valid;
+      return;
+    }
 
     const value = el.value.trim();
     if (!value) {
@@ -278,10 +362,6 @@ export class NewSessionForm {
       const n = parseInt(value);
       valid = !isNaN(n) && n > 0 && n <= 65535;
       msg = valid ? 'OK' : 'Port invalide';
-    } else if (field.includes('speed')) {
-      // Le moteur n'accepte que kbps et mbps (input.go : validSpeedSufixes).
-      valid = /^\d+(\.\d+)?\s*(kbps|mbps)$/i.test(value);
-      msg = valid ? 'OK' : 'Format: 5mbps ou 500kbps';
     } else {
       valid = /^\d+(\.\d+)?\s*(%|b|kb|mb|gb|tb)$/i.test(value);
       msg = valid ? 'OK' : 'Format: 100% ou 500MB';
@@ -301,7 +381,16 @@ export class NewSessionForm {
     }
 
     const fields = ['dl', 'dl-speed', 'ul', 'ul-speed', 'port'];
-    for (const f of fields) await this.validateField(f);
+    // `force` : un champ vide n'est signalé qu'ici, au lancement — jamais en
+    // rouge dès l'ouverture du formulaire.
+    for (const f of fields) await this.validateField(f, true);
+
+    const dlSpeed = this.readSpeedField('dl-speed');
+    const ulSpeed = this.readSpeedField('ul-speed');
+    if (dlSpeed === '' || ulSpeed === '') {
+      Toast.error('Renseignez les vitesses DL et UL (nombre + kbps/mbps)');
+      return;
+    }
 
     const allValid = fields.every(f => this.validationState[f]);
     if (!allValid) {
@@ -328,9 +417,11 @@ export class NewSessionForm {
       // moteur échouerait sur ParseFloat("5 ") (input.go n'enlève pas les
       // espaces, lui).
       downloaded: document.getElementById('field-dl').value.trim().toLowerCase().replace(',', '.').replace(/\s+/g, ''),
-      dl_speed: document.getElementById('field-dl-speed').value.trim().toLowerCase().replace(',', '.').replace(/\s+/g, ''),
+      // Normalisées par `readSpeedField` : déjà en minuscules, sans espace,
+      // avec l'unité choisie dans le menu déroulant (« 5mbps »).
+      dl_speed: dlSpeed,
       uploaded: document.getElementById('field-ul').value.trim().toLowerCase().replace(',', '.').replace(/\s+/g, ''),
-      ul_speed: document.getElementById('field-ul-speed').value.trim().toLowerCase().replace(',', '.').replace(/\s+/g, ''),
+      ul_speed: ulSpeed,
       port: parseInt(document.getElementById('field-port').value),
       client: clientValue,
       engine_path: enginePath,

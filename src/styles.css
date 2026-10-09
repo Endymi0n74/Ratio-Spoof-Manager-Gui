@@ -423,6 +423,23 @@ html, body {
   padding-right: 28px;
 }
 
+/* Vitesse : le nombre reste dans le champ, l'unité (kbps/mbps) se choisit
+   dans le menu déroulant à côté. */
+.speed-row {
+  display: flex;
+  gap: 8px;
+}
+
+.speed-row .form-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.speed-row .speed-unit {
+  flex: 0 0 96px;
+  width: 96px;
+}
+
 .validation-feedback {
   font-size: 10px;
   margin-top: 3px;
