@@ -56,7 +56,6 @@ export class NewSessionForm {
           <div class="speed-row">
             <input type="text" class="form-input" id="field-dl-speed" value="${this.settings?.default_dl_speed || ''}" placeholder="ex: 10" autocomplete="off">
             <select class="form-select speed-unit" id="unit-dl-speed" aria-label="Unite vitesse DL">
-              <option value="">unite</option>
               <option value="kbps">kbps</option>
               <option value="mbps">mbps</option>
             </select>
@@ -76,7 +75,6 @@ export class NewSessionForm {
           <div class="speed-row">
             <input type="text" class="form-input" id="field-ul-speed" value="${this.settings?.default_ul_speed || ''}" placeholder="ex: 5" autocomplete="off">
             <select class="form-select speed-unit" id="unit-ul-speed" aria-label="Unite vitesse UL">
-              <option value="">unite</option>
               <option value="kbps">kbps</option>
               <option value="mbps">mbps</option>
             </select>
@@ -282,9 +280,10 @@ export class NewSessionForm {
   /// menu déroulant (le moteur n'accepte que `kbps` et `mbps`).
   ///
   /// Retourne :
-  /// - `''` si nombre et unité sont vides (champ non renseigné) ;
-  /// - la valeur normalisée prête pour le moteur (`« 5mbps »`) ;
-  /// - `null` si la saisie est incomplète ou invalide.
+  /// - `''` si le champ nombre est vide (champ non renseigné) ;
+  /// - la valeur normalisée prête pour le moteur (`« 5mbps »`), l'unité
+  ///   étant toujours celle du menu déroulant (kbps par défaut) ;
+  /// - `null` si la saisie est invalide.
   ///
   /// Tolérance : « 5mbps » saisi d'un bloc reste accepté, l'unité rejoint
   /// alors le menu déroulant.
@@ -294,14 +293,14 @@ export class NewSessionForm {
     if (!el || !unitEl) return null;
 
     const raw = el.value.trim().toLowerCase().replace(',', '.').replace(/\s+/g, '');
-    if (!raw && !unitEl.value) return '';
+    if (!raw) return '';
 
     const m = raw.match(/^(\d+(?:\.\d+)?)(kbps|mbps)?$/);
     if (!m) return null;
 
+    // Le menu ne propose plus que kbps/mbps : il porte toujours une unité.
     if (m[2]) unitEl.value = m[2];
-    const unit = m[2] || unitEl.value;
-    return unit ? m[1] + unit : null;
+    return m[1] + unitEl.value;
   }
 
   /// Remplit nombre + unité à partir d'une valeur complète (« 0kbps »), pour
@@ -315,7 +314,8 @@ export class NewSessionForm {
       .trim().toLowerCase().replace(',', '.').replace(/\s+/g, '')
       .match(/^(\d+(?:\.\d+)?)(kbps|mbps)?$/);
     el.value = m ? m[1] : '';
-    unitEl.value = m && m[2] ? m[2] : '';
+    // Sans unité dans la valeur, le menu retombe sur kbps (défaut).
+    unitEl.value = m && m[2] ? m[2] : 'kbps';
   }
 
   async validateField(field, force = false) {
@@ -328,13 +328,13 @@ export class NewSessionForm {
       const speed = this.readSpeedField(field);
 
       if (speed === '') {
-        // Vide des deux côtés : état neutre tant que l'utilisateur n'a rien
+        // Champ nombre vide : état neutre tant que l'utilisateur n'a rien
         // saisi — le « requis » n'apparaît qu'au lancement (`force`), pour ne
         // pas afficher deux champs en rouge dès l'ouverture du formulaire.
         el.classList.toggle('invalid', force);
         el.classList.remove('valid');
         feedback.className = force ? 'validation-feedback error' : 'validation-feedback';
-        feedback.textContent = force ? 'Requis : ex 5 puis mbps' : '';
+        feedback.textContent = force ? 'Requis : ex 5 (kbps ou mbps)' : '';
         this.validationState[field] = false;
         return;
       }
@@ -344,7 +344,7 @@ export class NewSessionForm {
       el.classList.toggle('valid', valid);
       el.classList.toggle('invalid', !valid);
       feedback.className = `validation-feedback ${valid ? 'success' : 'error'}`;
-      feedback.textContent = valid ? 'OK' : 'Nombre ou unité invalide (ex: 5 puis mbps)';
+      feedback.textContent = valid ? 'OK' : 'Nombre invalide (ex: 5)';
       this.validationState[field] = valid;
       return;
     }
