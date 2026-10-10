@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ratio Spoof Manager — Guide utilisateur</title>
+<style>
+  :root {
+    --bg-primary: #0b0d14;
+    --bg-secondary: #151821;
+    --bg-tertiary: #1c1f2a;
+    --bg-hover: #252a38;
+    --text-primary: #e2e5ec;
+    --text-secondary: #8b92a8;
+    --text-muted: #5a6078;
+    --accent: #3b82f6;
+    --accent-hover: #2563eb;
+    --success: #22c55e;
+    --danger: #ef4444;
+    --warning: #f59e0b;
+    --border: #2a2e3f;
+    --radius: 10px;
+  }
+  :root.light {
+    --bg-primary: #f1f5f9;
+    --bg-secondary: #ffffff;
+    --bg-tertiary: #f8fafc;
+    --bg-hover: #e2e8f0;
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --text-muted: #94a3b8;
+    --border: #e2e8f0;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 84px; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 15px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  .layout { display: flex; min-height: 100vh; }
+
+  /* ===== Navigation latérale ===== */
+  nav {
+    width: 250px;
+    flex-shrink: 0;
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border);
+    padding: 24px 16px;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+  }
+  .nav-title { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .nav-logo {
+    width: 34px; height: 34px; background: var(--accent); border-radius: 9px;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-weight: 700; font-size: 12px; flex-shrink: 0;
+  }
+  .nav-app { font-weight: 600; font-size: 15px; }
+  .nav-version {
+    display: inline-block; font-size: 11px; color: var(--text-muted);
+    background: var(--bg-tertiary); border: 1px solid var(--border);
+    border-radius: 20px; padding: 1px 8px; margin-bottom: 18px;
+  }
+  nav ul { list-style: none; }
+  nav li { margin-bottom: 1px; }
+  nav a {
+    display: block; padding: 7px 10px; border-radius: 8px;
+    color: var(--text-secondary); text-decoration: none; font-size: 13.5px;
+    border-left: 2px solid transparent;
+  }
+  nav a:hover { background: var(--bg-hover); color: var(--text-primary); }
+  nav a.active {
+    background: var(--bg-tertiary); color: var(--accent);
+    border-left-color: var(--accent); font-weight: 500;
+  }
+  .theme-toggle {
+    margin-top: 22px; padding: 9px 11px; border: 1px solid var(--border);
+    border-radius: 8px; background: var(--bg-tertiary); color: var(--text-secondary);
+    font-size: 12.5px; cursor: pointer; width: 100%; text-align: left;
+    font-family: inherit;
+  }
+  .theme-toggle:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+  /* ===== Contenu ===== */
+  main { flex: 1; min-width: 0; padding: 40px 48px 96px; max-width: 980px; }
+  header.hero { margin-bottom: 40px; }
+  header.hero h1 { font-size: 30px; font-weight: 650; letter-spacing: -0.4px; }
+  header.hero p { color: var(--text-secondary); margin-top: 8px; }
+  .badges { margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .badge {
+    display: inline-block; font-size: 11.5px; padding: 3px 10px; border-radius: 20px;
+    background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-secondary);
+  }
+
+  section { margin-bottom: 44px; scroll-margin-top: 24px; }
+  h2 {
+    font-size: 21px; font-weight: 620; margin-bottom: 6px;
+    padding-bottom: 9px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+  }
+  h2 .num {
+    font-size: 12px; color: var(--accent); background: var(--bg-tertiary);
+    border: 1px solid var(--border); border-radius: 6px; padding: 1px 7px; font-weight: 600;
+  }
+  h3 { font-size: 16px; font-weight: 600; margin: 22px 0 8px; }
+  p { margin-bottom: 12px; color: var(--text-secondary); }
+  p strong, li strong { color: var(--text-primary); font-weight: 600; }
+  ul, ol { margin: 0 0 14px 22px; color: var(--text-secondary); }
+  li { margin-bottom: 6px; }
+  code {
+    background: var(--bg-tertiary); border: 1px solid var(--border);
+    padding: 1px 6px; border-radius: 5px; font-size: 12.5px;
+    font-family: 'Cascadia Code', Consolas, 'SF Mono', monospace; color: var(--text-primary);
+  }
+  pre {
+    background: var(--bg-secondary); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 14px 16px; overflow-x: auto; margin-bottom: 14px;
+  }
+  pre code { background: none; border: none; padding: 0; font-size: 12.5px; line-height: 1.6; }
+
+  .card {
+    background: var(--bg-secondary); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 18px 20px; margin-bottom: 16px;
+  }
+  .note {
+    border-left: 3px solid var(--accent); background: var(--bg-secondary);
+    border-radius: 0 var(--radius) var(--radius) 0; padding: 13px 17px; margin-bottom: 16px;
+  }
+  .note.warn { border-left-color: var(--warning); }
+  .note.danger { border-left-color: var(--danger); }
+  .note.ok { border-left-color: var(--success); }
+  .note-title { font-weight: 600; color: var(--text-primary); margin-bottom: 4px; font-size: 14px; }
+  .note p:last-child { margin-bottom: 0; }
+
+  table { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 14px; }
+  th, td {
+    text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border);
+    color: var(--text-secondary); vertical-align: top;
+  }
+  th { color: var(--text-primary); font-weight: 600; font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.4px; }
+  tbody tr:last-child td { border-bottom: none; }
+  td code { white-space: nowrap; }
+
+  .field-grid { display: grid; grid-template-columns: 150px 1fr; gap: 8px 16px; margin-bottom: 16px; }
+  .field-name { font-weight: 600; font-size: 14px; }
+  .field-desc { font-size: 14px; color: var(--text-secondary); }
+
+  kbd {
+    background: var(--bg-tertiary); border: 1px solid var(--border); border-bottom-width: 2px;
+    border-radius: 5px; padding: 1px 7px; font-size: 12px;
+    font-family: 'Cascadia Code', Consolas, monospace; color: var(--text-primary);
+  }
+  .steps { counter-reset: step; list-style: none; margin-left: 0; }
+  .steps > li {
+    counter-increment: step; position: relative; padding-left: 40px; margin-bottom: 14px;
+  }
+  .steps > li::before {
+    content: counter(step); position: absolute; left: 0; top: 1px;
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--accent); color: #fff; font-size: 13px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center;
+  }
+  footer {
+    border-top: 1px solid var(--border); padding-top: 20px;
+    color: var(--text-muted); font-size: 13px;
+  }
+  footer a { color: var(--accent); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+
+  @media (max-width: 900px) {
+    nav { display: none; }
+    main { padding: 28px 22px 64px; }
+    .field-grid { grid-template-columns: 1fr; gap: 2px 0; }
+    .field-desc { margin-bottom: 10px; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+<nav>
+  <div class="nav-title">
+    <div class="nav-logo">RSM</div>
+    <div class="nav-app">Ratio Spoof Manager</div>
+  </div>
+  <span class="nav-version">v2.0.5</span>
+  <ul>
+    <li><a href="#demarrage">Démarrage</a></li>
+    <li><a href="#formulaire">Le formulaire</a></li>
+    <li><a href="#champs">Les champs en détail</a></li>
+    <li><a href="#presets">Presets</a></li>
+    <li><a href="#sessions">Suivre une session</a></li>
+    <li><a href="#stats">Statistiques globales</a></li>
+    <li><a href="#parametres">Paramètres</a></li>
+    <li><a href="#raccourcis">Raccourcis</a></li>
+    <li><a href="#mises-a-jour">Mises à jour</a></li>
+    <li><a href="#apropos">À propos du binaire</a></li>
+    <li><a href="#depannage">Dépannage</a></li>
+    <li><a href="#avertissement">Avertissement</a></li>
+  </ul>
+  <button class="theme-toggle" id="theme-btn">◐ Basculer le thème de ce guide</button>
+</nav>
+
+<main>
+<header class="hero">
+  <h1>Guide utilisateur</h1>
+  <p>Prise en main complète de Ratio Spoof Manager, l'interface de bureau du moteur <code>ratio-spoof</code>.</p>
+  <div class="badges">
+    <span class="badge">Tauri 2 · Rust + Web</span>
+    <span class="badge">Windows · macOS · Linux</span>
+    <span class="badge">Moteur Go en sidecar</span>
+  </div>
+</header>
+
+<section id="demarrage">
+  <h2><span class="num">1</span>Démarrage</h2>
+
+  <h3>Installation</h3>
+  <p>Chaque release publie deux formes. Choisissez selon ce que vous voulez en faire.</p>
+  <table>
+    <thead><tr><th></th><th>Paquet portable (`.zip`)</th><th>Installateur (`_x64-setup.exe`)</th></tr></thead>
+    <tbody>
+      <tr><td>Installation</td><td>Aucune : décompressez et lancez</td><td>Assistant NSIS classique</td></tr>
+      <tr><td>Mise à jour</td><td>L'application annonce la mise à jour ; accepter lance l'installateur NSIS, qui crée une copie installée</td><td>Téléchargement, vérification de signature, installation, redémarrage</td></tr>
+      <tr><td>Recommandé si</td><td>Vous voulez une copie autonome sur une clé USB</td><td>Vous voulez une installation classique dans le menu Démarrer</td></tr>
+    </tbody>
+  </table>
+
+  <div class="note warn">
+    <div class="note-title">Le portable se décompresse en entier</div>
+    <p>L'application cherche le moteur à côté de son exécutable, puis dans son sous-dossier <code>binaries\</code>. Si vous déplacez <code>ratio-spoof-manager.exe</code> seul, le moteur devient introuvable — voir <a href="#depannage">Dépannage</a>.</p>
+  </div>
+
+  <h3>Premier lancement</h3>
+  <ol class="steps">
+    <li>Lancez <code>ratio-spoof-manager.exe</code>. La fenêtre s'ouvre avec un formulaire « Nouvelle session » à gauche, vide à droite.</li>
+    <li>L'application vérifie en arrière-plan si une version plus récente est disponible. Un échec réseau passe inaperçu — ce n'est pas bloquant.</li>
+    <li>Windows peut afficher une demande de permission pour les notifications : elle sert aux alertes de ratio et au redémarrage automatique. Refusée, l'application fonctionne quand même, sans notification.</li>
+  </ol>
+</section>
+
+<section id="formulaire">
+  <h2><span class="num">2</span>Le formulaire « Nouvelle session »</h2>
+  <p>Le panneau de gauche se rétrécit ou s'élargit : attrapez la poignée centrale et faites glisser. Vous pouvez déposer un <code>.torrent</code> n'importe où dans la fenêtre.</p>
+
+  <h3>Les cinq étapes</h3>
+  <ol class="steps">
+    <li><strong>Le fichier .torrent</strong> — glissez-déposez sur le cadre bleu, ou cliquez pour parcourir. Un jeton apparaît ensuite avec le nom du fichier ; la croix à droite l'enlève pour en choisir un autre.</li>
+    <li><strong>Télécharge / Vitesse DL</strong> — le volume que vous prétendez avoir téléchargé, et la vitesse correspondante.</li>
+    <li><strong>Uploade / Vitesse UL</strong> — le volume envoyé, et sa vitesse.</li>
+    <li><strong>Port et client</strong> — le port d'écoute et l'identité que le tracker attribue à votre client.</li>
+    <li><strong>Moteur</strong> — <em>Intégré</em> par défaut (le sidecar livré), ou <em>Personnalisé</em> pour pointer un autre binaire.</li>
+  </ol>
+  <p>Chaque champ est validé au fil de la frappe : bordure verte et mention « OK » quand la saisie est exploitable. Les champs restent neutres tant que vous n'avez rien tapé ; c'est le clic sur <strong>Lancer la session</strong> qui signale ce qui manque encore.</p>
+
+  <div class="note">
+    <div class="note-title">Les vitesses sont en deux morceaux</div>
+    <p>Un nombre dans le champ, l'unité (<code>kbps</code> ou <code>mbps</code>) dans le menu déroulant à côté. Taper <code>5mbps</code> d'un bloc reste accepté : l'unité rejoint alors le menu. Ce sont les deux seules unités que le moteur comprend — <code>gbps</code> et <code>bps</code> sont refusés.</p>
+  </div>
+</section>
+
+<section id="champs">
+  <h2><span class="num">3</span>Les champs en détail</h2>
+
+  <div class="field-grid">
+    <div class="field-name">Télécharge</div>
+    <div class="field-desc">Pourcentage ou taille : <code>100%</code>, <code>50%</code>, <code>500MB</code>, <code>1.5GB</code>. Unités acceptées : <code>%</code>, <code>b</code>, <code>kb</code>, <code>mb</code>, <code>gb</code>, <code>tb</code> (base 1024).</div>
+
+    <div class="field-name">Vitesse DL</div>
+    <div class="field-desc">Nombre + unité. <code>0kbps</code> signifie « aucun download » — c'est le réglage du preset <em>Seed pur</em>.</div>
+
+    <div class="field-name">Uploade</div>
+    <div class="field-desc">Même syntaxe que Télécharge. <code>0%</code> n'envoie rien : c'est le preset <em>Leech</em>.</div>
+
+    <div class="field-name">Vitesse UL</div>
+    <div class="field-desc">Nombre + unité. C'est la valeur qui fait monter votre ratio.</div>
+
+    <div class="field-name">Port</div>
+    <div class="field-desc">Entier de <code>1</code> à <code>65535</code>. Doit être cohérent avec le port réellement utilisé par votre client réel si vousSeedez pour de vrai.</div>
+
+    <div class="field-name">Client</div>
+    <div class="field-desc">Le Peer ID annoncé au tracker. <code>qBittorrent 4.0.3</code>, <code>qBittorrent 4.3.3</code>, ou <em>ID personnalisé</em> pour saisir une valeur libre (ex. <code>QB4650</code>).</div>
+
+    <div class="field-name">Moteur</div>
+    <div class="field-desc"><em>Intégré</em> utilise le sidecar livré avec l'application. <em>Personnalisé</em> ouvre un sélecteur de fichier — utile pour tester un moteur compilé localement.</div>
+  </div>
+</section>
+
+<section id="presets">
+  <h2><span class="num">4</span>Presets</h2>
+  <p>Quatre presets sont fournis. Un clic remplit tout le formulaire ; les champs sont revalidés immédiatement.</p>
+  <table>
+    <thead><tr><th>Preset</th><th>Télécharge</th><th>DL</th><th>Uploade</th><th>UL</th><th>Usage</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Seed pur</strong></td><td><code>100%</code></td><td><code>0kbps</code></td><td><code>0%</code></td><td><code>5mbps</code></td><td>Téléchargement complet, on ne fait qu'envoyer.</td></tr>
+      <tr><td><strong>Leech</strong></td><td><code>0%</code></td><td><code>10mbps</code></td><td><code>0%</code></td><td><code>0kbps</code></td><td>Télécharge rapide, n'envoie rien.</td></tr>
+      <tr><td><strong>Balanced</strong></td><td><code>50%</code></td><td><code>5mbps</code></td><td><code>25%</code></td><td><code>5mbps</code></td><td>Download et upload équilibrés.</td></tr>
+      <tr><td><strong>Ratio boost</strong></td><td><code>100%</code></td><td><code>0kbps</code></td><td><code>0%</code></td><td><code>50mbps</code></td><td>Forte montée de ratio.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Vos propres presets</h3>
+  <p>Le bouton <strong>+ Sauvegarder preset</strong>, sous la barre de presets, enregistre la configuration affichée. Donnez-lui un nom : il apparaît à côté des quatre autres et se sélectionne d'un clic.</p>
+  <p>La gestion se fait dans <em>Paramètres → Presets personnalisés</em>, où la croix à droite d'un nom le supprime. Ces presets sont stockés par l'application et survivent aux redémarrages.</p>
+  <div class="note">
+    <div class="note-title">Un preset ne mémorise pas le torrent</div>
+    <p>Il ne retient que les paramètres (volumes, vitesses, port, client). Il faut déposer le fichier <code>.torrent</code> à chaque fois.</p>
+  </div>
+</section>
+
+<section id="sessions">
+  <h2><span class="num">5</span>Suivre une session</h2>
+  <p>Chaque session lancée devient une carte dans le panneau de droite, avec un point de statut coloré :</p>
+  <table>
+    <thead><tr><th>Statut</th><th>Signification</th><th>Actions disponibles</th></tr></thead>
+    <tbody>
+      <tr><td>Demarrage...</td><td>Le moteur se lance.</td><td>—</td></tr>
+      <tr><td>En cours</td><td>Le moteur tourne et annonce au tracker.</td><td>Pause, Arrêter</td></tr>
+      <tr><td>En pause</td><td>Interrompu volontairement.</td><td>Reprendre, Arrêter</td></tr>
+      <tr><td>Arret...</td><td>Arrêt en cours — le moteur prépare sa dernière annonce.</td><td>— (boutons figés)</td></tr>
+      <tr><td>Arrete</td><td>Arrêté proprement.</td><td>Supprimer</td></tr>
+      <tr><td>Erreur</td><td>Le moteur n'a pas pu démarrer.</td><td>Supprimer</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Ce que lit chaque carte</h3>
+  <ul>
+    <li><strong>Upload</strong> — volume total envoyé</li>
+    <li><strong>Vitesse UL</strong> — débit courant</li>
+    <li><strong>Ratio</strong> — upload / download, une décimale</li>
+    <li><strong>Temps</strong> — durée depuis le lancement</li>
+    <li><strong>Graphique</strong> — débit d'upload, tracé uniquement quand la carte est visible</li>
+    <li><strong>Barre de progression</strong> — avancement du téléchargement annoncé</li>
+  </ul>
+  <p>Le champ de recherche filtre les sessions par nom. Le <strong>Journal</strong> en bas affiche la sortie brute du moteur de la session sélectionnée, colorée par niveau.</p>
+
+  <div class="note ok">
+    <div class="note-title">L'arrêt est propre, il ne coupe pas net</div>
+    <p>Au clic sur <strong>Arrêter</strong>, l'application envoie une interruption contrôlée : le moteur a le temps d'envoyer son annonce finale « stopped » au tracker. Si jamais il ne répond pas, il est tué au bout de 10 secondes. En cas de plantage de l'application elle-même, les moteurs rattachés sont tués automatiquement — aucun processus ne survit en announce fantôme.</p>
+  </div>
+</section>
+
+<section id="stats">
+  <h2><span class="num">6</span>Statistiques globales</h2>
+  <p>La barre sous l'en-tête agrège toutes les sessions, rafraîchie au rythme défini dans les paramètres (2 secondes par défaut) :</p>
+  <ul>
+    <li><strong>Sessions actives</strong> — nombre de sessions en cours</li>
+    <li><strong>Upload total</strong> / <strong>Download total</strong> — cumul de toutes les sessions</li>
+    <li><strong>Ratio moyen</strong> — rapport global upload/download</li>
+  </ul>
+  <p>Le graphique « Upload global (24h) » trace le débit cumulé de toutes les sessions réunies.</p>
+  <div class="note">
+    <div class="note-title">Rafraîchissement automatique</div>
+    <p>Quand la fenêtre passe en arrière-plan, l'intervalle passe à 30 secondes pour économiser des ressources ; il revient à la valeur normale dès que vous rouvrez la fenêtre.</p>
+  </div>
+</section>
+
+<section id="parametres">
+  <h2><span class="num">7</span>Paramètres</h2>
+  <p>Ouvrez la fenêtre avec le bouton <strong>Paramètres</strong> de l'en-tête, ou <kbd>Ctrl</kbd>+<kbd>,</kbd>.</p>
+  <table>
+    <thead><tr><th>Réglage</th><th>Effet</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Thème</strong></td><td>Bascule sombre / clair. Conservé d'un lancement à l'autre.</td></tr>
+      <tr><td><strong>Client par défaut</strong></td><td>Peer ID pré-sélectionné à l'ouverture du formulaire.</td></tr>
+      <tr><td><strong>Port par défaut</strong></td><td>Port pré-rempli dans le formulaire.</td></tr>
+      <tr><td><strong>Polling (sec)</strong></td><td>Fréquence de rafraîchissement des statistiques. 1 à 5 s : au-delà, l'affichage tarde à réagir.</td></tr>
+      <tr><td><strong>Alerte ratio cible</strong></td><td>Une notification est envoyée une seule fois par session dès que le ratio atteint ce seuil (2.0 par défaut).</td></tr>
+      <tr><td><strong>Redémarrage auto</strong></td><td>Relance automatiquement une session qui tombe en erreur. Après trois échecs, la session est abandonnée.</td></tr>
+      <tr><td><strong>Vérifier une mise à jour</strong></td><td>Force une vérification immédiate et affiche le résultat.</td></tr>
+      <tr><td><strong>Presets personnalisés</strong></td><td>Liste vos presets, avec suppression.</td></tr>
+    </tbody>
+  </table>
+  <p>Cliquez sur <strong>Enregistrer</strong> pour appliquer. Les réglages sont conservés d'un lancement à l'autre.</p>
+</section>
+
+<section id="raccourcis">
+  <h2><span class="num">8</span>Raccourcis clavier</h2>
+  <table>
+    <thead><tr><th>Raccourci</th><th>Action</th></tr></thead>
+    <tbody>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>N</kbd></td><td>Nouvelle session</td></tr>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>F</kbd></td><td>Rechercher une session</td></tr>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>M</kbd></td><td>Mode mini (fenêtre compacte)</td></tr>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>,</kbd></td><td>Paramètres</td></tr>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>Q</kbd></td><td>Quitter — arrête proprement toutes les sessions</td></tr>
+      <tr><td><kbd>Échap</kbd></td><td>Fermer la fenêtre ouverte</td></tr>
+    </tbody>
+  </table>
+  <p>Les deux boutons de l'en-tête complètent : <strong>□</strong> active le mode mini, <strong>_</strong> minimise vers la zone de notification.</p>
+</section>
+
+<section id="mises-a-jour">
+  <h2><span class="num">9</span>Mises à jour</h2>
+  <p>L'application vérifie la dernière release au démarrage, quelques secondes après l'ouverture. Si une version plus récente existe, elle annonce le numéro et propose l'installation ; votre réponse est demandée — rien ne s'installe en silence.</p>
+  <p>L'installateur téléchargé est <strong>vérifié par signature</strong> contre la clé publique figée dans le binaire avant toute exécution : un artefact altéré est refusé. Après installation, l'application redémarre d'elle-même.</p>
+  <p>Vous pouvez déclencher la vérification à tout moment via <em>Paramètres → Vérifier une mise à jour</em>.</p>
+  <div class="note warn">
+    <div class="note-title">En paquet portable</div>
+    <p>La même annonce apparaît. Accepter lance l'installateur NSIS, qui crée une copie installée à côté — le portable lui-même n'est pas modifié. Refuser le laisse intact, et la question vous sera reposée au démarrage suivant.</p>
+  </div>
+</section>
+
+<section id="apropos">
+  <h2><span class="num">10</span>À propos du binaire</h2>
+  <p>Le bouton <strong>À propos</strong> de l'en-tête affiche quatre informations figées <em>à la compilation</em> :</p>
+  <ul>
+    <li><strong>Version</strong> — le numéro de livraison</li>
+    <li><strong>Commit</strong> — le hash court du commit git, sélectionnable pour être copié</li>
+    <li><strong>Date du commit</strong></li>
+    <li><strong>État des sources</strong> — indique si le binaire a été compilé depuis un dépôt propre ou modifié</li>
+  </ul>
+  <p>Ces valeurs identifient la livraison qui tourne, indépendamment du dépôt éventuellement présent sur la machine. Si le binaire a été compilé hors dépôt (archive de sources), elles affichent « inconnu » — jamais une valeur fausse.</p>
+</section>
+
+<section id="depannage">
+  <h2><span class="num">11</span>Dépannage</h2>
+
+  <h3>« Renseignez les vitesses DL et UL »</h3>
+  <p>Le champ nombre est vide. Saisissez un nombre et choisissez <code>kbps</code> ou <code>mbps</code> dans le menu déroulant à côté — l'unité n'est plus devinée.</p>
+
+  <h3>« Nombre ou unité invalide »</h3>
+  <p>Le moteur n'accepte que <code>kbps</code> et <code>mbps</code>, en base 1024. <code>1gbps</code>, <code>500bps</code> ou une lettre glissée sont refusés : passez par <code>1000mbps</code>.</p>
+
+  <h3>Une seconde fenêtre s'ouvre au lancement d'une session</h3>
+  <p>Un exécutable nommé <code>ratio-spoof</code> traîne dans le dossier de l'application — un vieux moteur 2021 s'y est glissé. Supprimez-le ou déplacez-le : l'application cherche un fichier dont le nom ressemble à un <em>target triple</em> (<code>ratio-spoof-x86_64-pc-windows-msvc.exe</code>).</p>
+
+  <h3>Le moteur est introuvable</h3>
+  <p>Le dossier <code>binaries\</code> n'est plus à côté de l'exécutable. Reprenez l'archive complète, ou indiquez le chemin via <em>Moteur → Personnalisé</em> dans le formulaire.</p>
+
+  <h3>Le port est refusé</h3>
+  <p>La plage valide est <code>1</code> à <code>65535</code>. En pratique, évitez les ports inférieurs à <code>1024</code> : ils exigent des privilèges administrateur.</p>
+
+  <h3>Les statistiques ne bougent pas</h3>
+  <p>Vérifiez l'intervalle de polling dans les paramètres. Si une session affiche « Arret... » indéfiniment, le moteur ne répond plus : supprimez la session et relancez-la.</p>
+
+  <h3>Aucune notification n'arrive</h3>
+  <p>Windows a peut-être refusé la permission. Vérifiez dans les réglages système → Notifications que l'application est autorisée.</p>
+</section>
+
+<section id="avertissement">
+  <h2><span class="num">12</span>Avertissement</h2>
+  <div class="note danger">
+    <div class="note-title">Usage à vos seuls risques</div>
+    <p>N'utilisez ce logiciel que là où vous y êtes autorisé. Déclarer des volumes téléchargés ou envoyés qui n'ont pas été échangés peut violer les règles d'un tracker privé et entraîner la suspension du compte. Préférez le seed réel dès que possible.</p>
+  </div>
+</section>
+
+<footer>
+  Ratio Spoof Manager v2.0.5 — application Tauri 2 pour le moteur
+  <a href="https://github.com/Endymi0n74/ratio-spoof" target="_blank" rel="noopener">ratio-spoof</a>.
+  Licence MIT.
+</footer>
+
+</main>
+</div>
+
+<script>
+  // Le guide suit le thème de l'application : sombre par défaut, clair si
+  // l'utilisateur l'a choisi là-bas.
+  var stored = null;
+  try { stored = localStorage.getItem('rsm_guide_theme'); } catch (e) {}
+  if (stored === 'light') document.documentElement.classList.add('light');
+
+  document.getElementById('theme-btn').addEventListener('click', function () {
+    var light = document.documentElement.classList.toggle('light');
+    try { localStorage.setItem('rsm_guide_theme', light ? 'light' : 'dark'); } catch (e) {}
+  });
+
+  // Sommaire actif au défilement.
+  var links = Array.prototype.slice.call(document.querySelectorAll('nav a'));
+  var byId = {};
+  links.forEach(function (a) { byId[a.getAttribute('href').slice(1)] = a; });
+
+  var observer = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      var link = byId[entry.target.id];
+      if (!link) return;
+      if (entry.isIntersecting) {
+        links.forEach(function (l) { l.classList.remove('active'); });
+        link.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-80px 0px -70% 0px' });
+
+  document.querySelectorAll('main section').forEach(function (s) { observer.observe(s); });
+</script>
+</body>
+</html>
