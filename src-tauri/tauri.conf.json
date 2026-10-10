@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Ratio Spoof Manager",
-  "version": "2.0.6",
+  "version": "2.0.7",
   "identifier": "com.endymi0n74.ratio-spoof-manager",
   "build": {
     "frontendDist": "../dist",
@@ -46,7 +46,12 @@
     ],
     "externalBin": [
       "binaries/ratio-spoof"
-    ]
+    ],
+    "windows": {
+      "nsis": {
+        "installerHooks": "../packaging/installer-hooks.nsh"
+      }
+    }
   },
   "plugins": {
     "updater": {
