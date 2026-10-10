@@ -1,4 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
+import { check } from '@tauri-apps/plugin-updater';
+import { relaunch } from '@tauri-apps/plugin-process';
 import { NewSessionForm } from './components/NewSessionForm.js';
 import { SessionCard } from './components/SessionCard.js';
 import { LogPanel } from './components/LogPanel.js';
@@ -87,6 +89,47 @@ class App {
     // Identité du binaire (version + commit) : remplie dès que le backend
     // répond ; le bandeau garde sa valeur de repli en attendant.
     this.loadBuildInfo();
+    // Auto-mise à jour : vérification discrète, légèrement différée pour ne pas
+    // ralentir le démarrage. Un échec (release sans manifeste, réseau absent)
+    // reste silencieux — voir checkForUpdates.
+    setTimeout(() => this.checkForUpdates(), 3000);
+  }
+
+  /// Vérifie la release la plus récente (`latest.json` publié par le workflow
+  /// de release) et propose l'installation.
+  ///
+  /// `manual` : appelé depuis les Paramètres — l'absence de mise à jour est
+  /// annoncée et une erreur devient un toast. Au démarrage, tout reste
+  /// silencieux (console) : la mise à jour ne doit jamais être un obstacle.
+  async checkForUpdates(manual = false) {
+    try {
+      const update = await check();
+      if (!update) {
+        if (manual) Toast.info('Vous etes a jour');
+        return;
+      }
+
+      const question = 'Nouvelle version ' + update.version + ' disponible (actuelle '
+        + update.currentVersion + ').'
+        + (update.notes ? '\n\n' + update.notes : '')
+        + '\n\nInstaller et redemarrer maintenant ?';
+      if (!confirm(question)) return;
+
+      Toast.info('Telechargement de la version ' + update.version + '...');
+      await update.downloadAndInstall((event) => {
+        if (event.event === 'Started') {
+          console.log('Telechargement :', event.data.contentLength, 'octets');
+        }
+      });
+      Toast.success('Version ' + update.version + ' installee : redemarrage');
+      await relaunch();
+    } catch (e) {
+      if (manual) {
+        Toast.error('Verification de mise a jour impossible : ' + (e?.message || e));
+      } else {
+        console.warn('Verification de mise a jour impossible :', e);
+      }
+    }
   }
 
   loadPersistedSessions() {
@@ -186,7 +229,7 @@ class App {
           <div class='app-logo'>RSM</div>
           <div>
             <span class='app-title'>Ratio Spoof Manager</span>
-            <span class='app-version' id='app-version'>v2.0.3</span>
+            <span class='app-version' id='app-version'>v2.0.4</span>
           </div>
         </div>
         <div class='app-header-right'>
@@ -295,6 +338,10 @@ class App {
                   <div class='switch ${this.autoRestartEnabled ? 'active' : ''}' id='auto-restart-switch'></div>
                   <span>Redemarrage auto en cas de crash</span>
                 </label>
+              </div>
+              <div class='form-group'>
+                <label class='form-label'>Mises a jour</label>
+                <button class='btn btn-secondary w-full' id='btn-check-update'>Verifier une mise a jour</button>
               </div>
               <div class='form-group'>
                 <label class='form-label'>Presets personnalises</label>
@@ -511,6 +558,12 @@ class App {
     autoRestartSwitch?.addEventListener('click', () => {
       this.autoRestartEnabled = !this.autoRestartEnabled;
       autoRestartSwitch.classList.toggle('active', this.autoRestartEnabled);
+    });
+    document.getElementById('btn-check-update')?.addEventListener('click', async () => {
+      // La fenêtre se ferme d'abord : le `confirm()` d'installation ne doit
+      // pas s'ouvrir par-dessus la modale.
+      close();
+      await this.checkForUpdates(true);
     });
     saveBtn?.addEventListener('click', async () => {
       const port = document.getElementById('setting-port')?.value;

@@ -3,6 +3,9 @@ mod ipc_guard;
 mod session;
 mod settings;
 mod process;
+// Tests de contrat du manifeste `latest.json` de l'auto-updater.
+#[cfg(test)]
+mod updater_manifest;
 
 use session::SessionManager;
 use settings::AppSettings;
@@ -13,6 +16,10 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_notification::init())
+        // Auto-mise à jour : téléchargement/signature des artefacts (updater)
+        // + redémarrage après installation (process::relaunch).
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(SessionManager::new())
         .manage(AppSettings::load())
         // Garde-fou de panique autour du dispatch IPC : sans lui, une panique

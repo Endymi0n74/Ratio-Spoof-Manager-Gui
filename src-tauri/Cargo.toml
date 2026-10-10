@@ -1,12 +1,15 @@
 [package]
 name = "ratio-spoof-manager"
-version = "2.0.3"
+version = "2.0.4"
 description = "Modern GUI for ratio-spoof"
 authors = ["Endymi0n74"]
 license = "MIT"
 repository = "https://github.com/Endymi0n74/Ratio-Spoof-Manager-Gui"
 edition = "2021"
-rust-version = "1.70"
+# MSRV dicté par l'écosystème Tauri 2 : `tauri-plugin-process` 2.4 exige
+# rustc 1.90 (au-delà, cargo écarte silencieusement le crate et choisirait
+# une version bêta). Toolchain réelle : 1.97.1.
+rust-version = "1.90"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -27,6 +30,8 @@ anyhow = "1"
 thiserror = "1"
 regex = "1"
 dirs = "5"
+tauri-plugin-updater = "2.13.2"
+tauri-plugin-process = "2.4.0"
 
 [features]
 default = ["custom-protocol"]

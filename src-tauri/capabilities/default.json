@@ -13,6 +13,8 @@
     "fs:allow-copy-file",
     "fs:allow-remove",
     "fs:allow-create",
-    "notification:default"
+    "notification:default",
+    "updater:default",
+    "process:allow-restart"
   ]
 }

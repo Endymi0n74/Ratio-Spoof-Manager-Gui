@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Ratio Spoof Manager",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "identifier": "com.endymi0n74.ratio-spoof-manager",
   "build": {
     "frontendDist": "../dist",
@@ -33,6 +33,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -46,5 +47,16 @@
     "externalBin": [
       "binaries/ratio-spoof"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQxNTIzRjlCMzA2MkJDQkMKUldTOHZHSXdtejlTMGRBeEt1K2ZmNDJQN1E2aTBac29BWkh5amdDd1JNM0ZyY3MvNU9lUkJ0ZkcK",
+      "endpoints": [
+        "https://github.com/Endymi0n74/Ratio-Spoof-Manager-Gui/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

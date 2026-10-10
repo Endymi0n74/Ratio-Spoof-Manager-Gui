@@ -1,10 +1,11 @@
 name: Release
 
 # Produit le paquet portable Windows x64 (exécutable + sidecar rangé dans binaries/
-# + SHA256SUMS) et publie les assets de la release. Un tag v* déclenche la chaîne
-# complète ; le déclenchement manuel sert à (re)construire les assets d'un tag
-# existant : il build le réf sur lequel il est lancé (`--ref master` par défaut,
-# `--ref <tag>` pour une reconstruction fidèle du tag).
+# + SHA256SUMS), l'installateur NSIS signé et `latest.json` (manifeste lu par
+# l'auto-updater), puis publie ces assets sur la release. Un tag v* déclenche la
+# chaîne complète ; le déclenchement manuel sert à (re)construire les assets d'un
+# tag existant : il build le réf sur lequel il est lancé (`--ref master` par
+# défaut, `--ref <tag>` pour une reconstruction fidèle du tag).
 on:
   push:
     tags: ["v*"]
@@ -67,13 +68,21 @@ jobs:
         working-directory: src-tauri
         run: cargo clippy --all-targets -- -D warnings
 
-      - name: Exécutable (sans installateur WiX/NSIS)
-        run: npm run tauri build -- --no-bundle
+      # Le bundle NSIS est obligatoire : l'auto-updater n'installe que des
+      # installateurs signés (`createUpdaterArtifacts` dans tauri.conf.json), pas
+      # le zip portable. La clé privée est donc requise ici — sans elle, le build
+      # s'arrête après makensis au moment de signer.
+      - name: Exécutable + installateur NSIS signé (auto-updater)
+        run: npm run tauri build -- --bundles nsis
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       - name: Assembler le paquet portable
         shell: pwsh
         env:
           TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag }}
+          REPO: ${{ github.repository }}
         run: |
           $ErrorActionPreference = "Stop"
           $tag = $env:TAG
@@ -119,15 +128,27 @@ jobs:
           Write-Host "Archive : $zip"
           Get-ChildItem $stage -Recurse -File | Select-Object -ExpandProperty FullName
 
-          # Assets de la release : les deux binaires bruts (comme avant) + l'archive.
+          # Assets de la release : les deux binaires bruts (comme avant) +
+          # l'archive + le bundle NSIS (installateur et sa signature updater).
           Copy-Item "src-tauri/target/release/ratio-spoof-manager.exe" "artifacts/"
           Copy-Item "src-tauri/binaries/ratio-spoof-x86_64-pc-windows-msvc.exe" "artifacts/"
+          Copy-Item "src-tauri/target/release/bundle/nsis/*" "artifacts/"
 
-          $releaseFiles = @(
-            "ratio-spoof-manager.exe",
-            "ratio-spoof-x86_64-pc-windows-msvc.exe",
-            (Split-Path $zip -Leaf)
-          )
+          # Manifeste de l'auto-updater : ses URLs pointent vers l'installateur
+          # signé de cette même release. Il est publié comme asset, ce que lit
+          # l'endpoint `releases/latest/download/latest.json` de tauri.conf.json.
+          node scripts/make-updater-manifest.mjs `
+            --version="$version" `
+            --base-url="https://github.com/$env:REPO/releases/download/$tag" `
+            --dir=artifacts `
+            --notes="Ratio Spoof Manager $tag : voir https://github.com/$env:REPO/releases/tag/$tag"
+
+          # Empreintes de TOUS les assets (hors ce fichier), triées pour rester
+          # identiques d'une exécution à l'autre.
+          $releaseFiles = Get-ChildItem "artifacts" -File |
+            Where-Object { $_.Name -ne "SHA256SUMS.txt" } |
+            Sort-Object Name |
+            ForEach-Object Name
           $lines = foreach ($file in $releaseFiles) {
             $hash = (Get-FileHash "artifacts/$file" -Algorithm SHA256).Hash.ToLower()
             "$hash  $file"

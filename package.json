@@ -1,6 +1,6 @@
 {
   "name": "ratio-spoof-manager",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "description": "Modern GUI for ratio-spoof built with Tauri",
   "type": "module",
   "scripts": {
@@ -20,9 +20,11 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",
-    "@tauri-apps/plugin-shell": "^2.0.0",
     "@tauri-apps/plugin-dialog": "^2.0.0",
     "@tauri-apps/plugin-fs": "^2.0.0",
-    "@tauri-apps/plugin-notification": "^2.0.0"
+    "@tauri-apps/plugin-notification": "^2.0.0",
+    "@tauri-apps/plugin-process": "^2.4.0",
+    "@tauri-apps/plugin-shell": "^2.0.0",
+    "@tauri-apps/plugin-updater": "^2.13.2"
   }
 }
