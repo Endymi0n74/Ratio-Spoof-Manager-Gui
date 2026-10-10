@@ -111,6 +111,8 @@ Détail Windows : `GenerateConsoleCtrlEvent` **renvoie succès même quand rien 
 - **Reconstruction + vérification finale (10/10/2026) :** release regénérée par `workflow_dispatch` (run `38031606253`, 12 m 44, vert), assets remplacés par `--clobber`. Contrôlés ensuite indépendamment : endpoint en 200 avec `version: 2.0.4`, URL d'installateur **sans `%20` en HEAD 200**, signature du manifeste **identique** à l'asset `.sig` publié, les 7 entrées de `SHA256SUMS.txt` présentes dans l'API, 7 assets. Le premier run (`38030594039`) avait publié l'URL cassée.
 - **Poussé et publié (le 10/10/2026) :** voir § Ménage du 10/10/2026 — **toutes les releases antérieures ont été supprimées**. Il ne reste que **`v2.0.10`**, release et tag. L'historique des versions 2.0.0 à 2.0.9 est conservé dans ce fichier et dans l'historique git, mais plus dans GitHub : une version installée en dessous ne peut plus être réinstallée depuis l'URL de sa release (l'auto-update, elle, fonctionne toujours via `releases/latest/download/latest.json`).
 
+- **Validée par l'utilisateur** : la 2.0.10 s'ouvre normalement (fenêtre rendue) et la mise à jour automatique fonctionne. Le cycle 2.0.9 cassée → 2.0.10 correcte est donc bouclé en conditions réelles.
+
 ## Ménage du 10/10/2026 (après la 2.0.10)
 
 - **Releases GitHub :** `v2.0.4`, `v2.0.6`, `v2.0.7`, `v2.0.8`, `v2.0.9` supprimées. Seul `v2.0.10` reste (dernière release et « Latest »).
