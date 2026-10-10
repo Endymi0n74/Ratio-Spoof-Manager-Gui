@@ -33,6 +33,19 @@ et publié par target triple : https://github.com/Endymi0n74/ratio-spoof
 Il est récupéré tel quel (mêmes octets) et son empreinte SHA-256 est vérifiée
 avant chaque build.
 
+Mises à jour
+------------
+Au démarrage, l'application vérifie s'il existe une version plus récente
+(asset « latest.json » de la release GitHub). Si oui, elle annonce la version
+et propose l'installation : l'installateur NSIS est téléchargé, sa signature
+est vérifiée contre la clé publique du binaire, puis il s'exécute en mode
+silencieux et l'application redémarre. Une vérification manuelle est
+disponible dans « Paramètres ».
+
+En paquet portable, accepter installe la nouvelle version (l'installateur
+crée une copie installée) ; refuser laisse ce paquet tel quel — la question
+sera reposée au démarrage suivant.
+
 Avertissement
 -------------
 N'utilisez ce logiciel que là où vous y êtes autorisé. Déclarer des volumes

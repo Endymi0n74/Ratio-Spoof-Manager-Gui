@@ -6,7 +6,7 @@ The Go engine is **not** embedded as source code or a versioned binary: it is
 downloaded from the release of the dedicated repository [Endymi0n74/ratio-spoof](https://github.com/Endymi0n74/ratio-spoof),
 the sidecar's single source of truth (see [Engine & sidecar](#moteur--sidecar)).
 
-![Version](https://img.shields.io/badge/version-2.0.3-blue)
+![Version](https://img.shields.io/badge/version-2.0.4-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 [🇫🇷 Français](README.md) · **🇬🇧 English**
@@ -21,7 +21,20 @@ the sidecar's single source of truth (see [Engine & sidecar](#moteur--sidecar)).
 - **Global stats**: total upload, average ratio, active sessions
 - **Delivery traceability**: *About* window — version and git commit frozen into the binary at compile time
 - **Toast notifications**: non-blocking feedback
+- **Auto-updates**: startup check, signed artifact, then relaunch
 - **Modern dark design**: native GPU-accelerated interface
+
+## Updates
+
+The application checks the latest release at startup (also available under
+*Settings → Check for updates*). If a newer version exists, it offers to
+install it and restarts.
+
+The check reads the release's `latest.json` asset; the installer download is
+verified against the public key embedded in the binary before anything runs —
+a tampered artifact is rejected. The portable package gets the same prompt:
+accepting launches the NSIS installer, declining keeps the portable untouched
+(the prompt returns on the next start).
 
 ## License
 
