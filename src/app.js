@@ -229,7 +229,7 @@ class App {
           <div class='app-logo'>RSM</div>
           <div>
             <span class='app-title'>Ratio Spoof Manager</span>
-            <span class='app-version' id='app-version'>v2.0.5</span>
+            <span class='app-version' id='app-version'>v2.0.6</span>
           </div>
         </div>
         <div class='app-header-right'>
