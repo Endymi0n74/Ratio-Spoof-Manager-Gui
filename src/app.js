@@ -229,7 +229,7 @@ class App {
           <div class='app-logo'>RSM</div>
           <div>
             <span class='app-title'>Ratio Spoof Manager</span>
-            <span class='app-version' id='app-version'>v2.0.7</span>
+            <span class='app-version' id='app-version'>v2.0.8</span>
           </div>
         </div>
         <div class='app-header-right'>
@@ -374,10 +374,6 @@ class App {
               <div class='about-row'>
                 <span class='about-label'>Date du commit</span>
                 <span class='about-value' id='about-date'>inconnue</span>
-              </div>
-              <div class='about-row'>
-                <span class='about-label'>Etat des sources</span>
-                <span class='about-value' id='about-state'>inconnu</span>
               </div>
             </div>
             <p class='about-hint'>
@@ -957,9 +953,8 @@ class App {
       if (el) el.textContent = text;
     };
     set('about-version', version);
-    set('about-commit', info.commit + (info.dirty ? ' + modifications locales' : ''));
+    set('about-commit', info.commit);
     set('about-date', info.commit_date || 'inconnue');
-    set('about-state', info.dirty ? 'Modifications locales non commitees' : 'Propre (identique au commit)');
   }
 
   setupAboutModal() {

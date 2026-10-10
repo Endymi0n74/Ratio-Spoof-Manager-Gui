@@ -20,11 +20,9 @@ fn main() {
     // reconstruit indépendamment).
     let commit = git(&["rev-parse", "--short=7", "HEAD"]).unwrap_or_else(|| "inconnu".into());
     let date = git(&["show", "-s", "--format=%cs", "HEAD"]).unwrap_or_else(|| "inconnue".into());
-    let dirty = git(&["status", "--porcelain"]).is_some_and(|status| !status.is_empty());
 
     println!("cargo:rustc-env=RSM_COMMIT={commit}");
     println!("cargo:rustc-env=RSM_COMMIT_DATE={date}");
-    println!("cargo:rustc-env=RSM_DIRTY={}", if dirty { "1" } else { "0" });
 
     // Sans ces déclarations, le commit resterait figé jusqu'à la prochaine
     // édition de source : cargo ne relance le script que sur ses dépendances.

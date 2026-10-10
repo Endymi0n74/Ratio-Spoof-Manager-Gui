@@ -342,9 +342,6 @@ pub struct BuildInfo {
     pub version: String,
     pub commit: String,
     pub commit_date: String,
-    /// Vrai si des modifications non commitées étaient présentes au moment de
-    /// la compilation : le binaire ne correspond alors à aucun commit exact.
-    pub dirty: bool,
 }
 
 fn build_info() -> BuildInfo {
@@ -352,7 +349,6 @@ fn build_info() -> BuildInfo {
         version: env!("CARGO_PKG_VERSION").to_string(),
         commit: env!("RSM_COMMIT").to_string(),
         commit_date: env!("RSM_COMMIT_DATE").to_string(),
-        dirty: env!("RSM_DIRTY") == "1",
     }
 }
 
