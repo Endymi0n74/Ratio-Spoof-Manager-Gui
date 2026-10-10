@@ -1,6 +1,6 @@
 # Ratio Spoof Manager v2
 
-![Version](https://img.shields.io/badge/version-2.0.6-blue)
+![Version](https://img.shields.io/badge/version-2.0.7-blue)
 ![Tauri](https://img.shields.io/badge/Tauri-2.x-24c8db)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
