@@ -189,7 +189,7 @@
     <div class="nav-logo">RSM</div>
     <div class="nav-app">Ratio Spoof Manager</div>
   </div>
-  <span class="nav-version">v2.0.8</span>
+  <span class="nav-version">v2.0.9</span>
   <ul>
     <li><a href="#demarrage">Démarrage</a></li>
     <li><a href="#formulaire">Le formulaire</a></li>
@@ -373,7 +373,7 @@
       <tr><td><strong>Polling (sec)</strong></td><td>Fréquence de rafraîchissement des statistiques. 1 à 5 s : au-delà, l'affichage tarde à réagir.</td></tr>
       <tr><td><strong>Alerte ratio cible</strong></td><td>Une notification est envoyée une seule fois par session dès que le ratio atteint ce seuil (2.0 par défaut).</td></tr>
       <tr><td><strong>Redémarrage auto</strong></td><td>Relance automatiquement une session qui tombe en erreur. Après trois échecs, la session est abandonnée.</td></tr>
-      <tr><td><strong>Vérifier une mise à jour</strong></td><td>Force une vérification immédiate et affiche le résultat.</td></tr>
+      <tr><td><strong>Vérifier une mise à jour</strong></td><td>Ce bouton n'est plus dans les Paramètres : il est dans la fenêtre *À propos*.</td></tr>
       <tr><td><strong>Presets personnalisés</strong></td><td>Liste vos presets, avec suppression.</td></tr>
     </tbody>
   </table>
@@ -400,7 +400,7 @@
   <h2><span class="num">9</span>Mises à jour</h2>
   <p>L'application vérifie la dernière release au démarrage, quelques secondes après l'ouverture. Si une version plus récente existe, elle annonce le numéro et propose l'installation ; votre réponse est demandée — rien ne s'installe en silence.</p>
   <p>L'installateur téléchargé est <strong>vérifié par signature</strong> contre la clé publique figée dans le binaire avant toute exécution : un artefact altéré est refusé. Après installation, l'application redémarre d'elle-même.</p>
-  <p>Vous pouvez déclencher la vérification à tout moment via <em>Paramètres → Vérifier une mise à jour</em>.</p>
+  <p>Vous pouvez déclencher la vérification à tout moment via le bouton <em>Vérifier une mise à jour</em> de la fenêtre <strong>À propos</strong>. Le résultat s'affiche juste en dessous.</p>
   <div class="note warn">
     <div class="note-title">En paquet portable</div>
     <p>La même annonce apparaît. Accepter lance l'installateur NSIS, qui crée une copie installée à côté — le portable lui-même n'est pas modifié. Refuser le laisse intact, et la question vous sera reposée au démarrage suivant.</p>
@@ -409,13 +409,8 @@
 
 <section id="apropos">
   <h2><span class="num">10</span>À propos du binaire</h2>
-  <p>Le bouton <strong>À propos</strong> de l'en-tête affiche trois informations figées <em>à la compilation</em> :</p>
-  <ul>
-    <li><strong>Version</strong> — le numéro de livraison</li>
-    <li><strong>Commit</strong> — le hash court du commit git, sélectionnable pour être copié</li>
-    <li><strong>Date du commit</strong></li>
-  </ul>
-  <p>Ces valeurs identifient la livraison qui tourne, indépendamment du dépôt éventuellement présent sur la machine. Si le binaire a été compilé hors dépôt (archive de sources), elles affichent « inconnu » — jamais une valeur fausse.</p>
+  <p>Le bouton <strong>À propos</strong> de l'en-tête affiche la version en cours, figée <em>à la compilation</em>, ainsi que le bouton de vérification de mise à jour (voir <a href="#mises-a-jour">Mises à jour</a>).</p>
+  <p>La version est également affichée en permanence dans le bandeau de l'en-tête.</p>
 </section>
 
 <section id="depannage">
@@ -452,7 +447,7 @@
 </section>
 
 <footer>
-  Ratio Spoof Manager v2.0.8 — application Tauri 2 pour le moteur
+  Ratio Spoof Manager v2.0.9 — application Tauri 2 pour le moteur
   <a href="https://github.com/Endymi0n74/ratio-spoof" target="_blank" rel="noopener">ratio-spoof</a>.
   Licence MIT.
 </footer>

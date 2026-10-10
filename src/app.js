@@ -65,6 +65,12 @@ class App {
     this._isBackground = false;
     this._backgroundInterval = 30000;
     this._intersectionObserver = null;
+    // Dernier resultat de verification de mise a jour, affiche dans la
+    // fenetre « A propos ». La verification de demarrage (silencieuse) le
+    // renseigne aussi : ouvrir « A propos » montre donc l'etat reel, pas un
+    // « jamais verifie » trompeur.
+    this.updateStatus = '';
+    this.updateStatusError = false;
     this.init();
   }
 
@@ -91,8 +97,16 @@ class App {
     this.loadBuildInfo();
     // Auto-mise à jour : vérification discrète, légèrement différée pour ne pas
     // ralentir le démarrage. Un échec (release sans manifeste, réseau absent)
-    // reste silencieux — voir checkForUpdates.
-    setTimeout(() => this.checkForUpdates(), 3000);
+    // reste silencieux — voir checkForUpdates. Le résultat est mémorisé pour
+    // la fenêtre « A propos », qui peut être ouverte à tout moment.
+    setTimeout(async () => {
+      await this.checkForUpdates();
+      // La fenêtre a pu être ouverte pendant la vérification : on repeint
+      // son statut, sinon elle resterait vide pendant plusieurs secondes.
+      if (document.getElementById('about-modal')?.classList.contains('active')) {
+        this.renderUpdateStatus(true);
+      }
+    }, 3000);
   }
 
   /// Vérifie la release la plus récente (`latest.json` publié par le workflow
@@ -105,9 +119,16 @@ class App {
     try {
       const update = await check();
       if (!update) {
+        // Statut memorise pour la fenetre « A propos », qui peut etre ouverte
+        // sans que l'utilisateur ait declenche la verification.
+        this.updateStatus = 'Vous etes a jour.';
+        this.updateStatusError = false;
         if (manual) Toast.info('Vous etes a jour');
         return;
       }
+
+      this.updateStatus = 'Version ' + update.version + ' disponible.';
+      this.updateStatusError = false;
 
       const question = 'Nouvelle version ' + update.version + ' disponible (actuelle '
         + update.currentVersion + ').'
@@ -124,6 +145,8 @@ class App {
       Toast.success('Version ' + update.version + ' installee : redemarrage');
       await relaunch();
     } catch (e) {
+      this.updateStatus = 'Verification impossible : ' + (e?.message || e);
+      this.updateStatusError = true;
       if (manual) {
         Toast.error('Verification de mise a jour impossible : ' + (e?.message || e));
       } else {
@@ -229,7 +252,7 @@ class App {
           <div class='app-logo'>RSM</div>
           <div>
             <span class='app-title'>Ratio Spoof Manager</span>
-            <span class='app-version' id='app-version'>v2.0.8</span>
+            <span class='app-version' id='app-version'>v2.0.9</span>
           </div>
         </div>
         <div class='app-header-right'>
@@ -340,10 +363,6 @@ class App {
                 </label>
               </div>
               <div class='form-group'>
-                <label class='form-label'>Mises a jour</label>
-                <button class='btn btn-secondary w-full' id='btn-check-update'>Verifier une mise a jour</button>
-              </div>
-              <div class='form-group'>
                 <label class='form-label'>Presets personnalises</label>
                 <div id='custom-presets-list' style='display: flex; flex-direction: column; gap: 6px;'></div>
               </div>
@@ -367,19 +386,17 @@ class App {
                 <span class='about-label'>Version</span>
                 <span class='about-value' id='about-version'>inconnue</span>
               </div>
-              <div class='about-row'>
-                <span class='about-label'>Commit</span>
-                <span class='about-value about-mono' id='about-commit'>inconnu</span>
-              </div>
-              <div class='about-row'>
-                <span class='about-label'>Date du commit</span>
-                <span class='about-value' id='about-date'>inconnue</span>
-              </div>
+            </div>
+            <div class='about-update'>
+              <button class='btn btn-secondary w-full' id='btn-about-update'>
+                ${this.icons.download || ''} Verifier une mise a jour
+              </button>
+              <div class='about-update-status' id='about-update-status'></div>
             </div>
             <p class='about-hint'>
-              Ces informations sont figees dans l'executable au moment de la compilation :
-              elles identifient la livraison qui tourne, independamment du depot present sur
-              cette machine. Le commit est selectionnable pour etre copie.
+              Cette version est figee dans l'executable au moment de sa compilation :
+              elle identifie la livraison qui tourne, independamment du depot present
+              sur cette machine.
             </p>
           </div>
           <div class='modal-footer'>
@@ -554,12 +571,6 @@ class App {
     autoRestartSwitch?.addEventListener('click', () => {
       this.autoRestartEnabled = !this.autoRestartEnabled;
       autoRestartSwitch.classList.toggle('active', this.autoRestartEnabled);
-    });
-    document.getElementById('btn-check-update')?.addEventListener('click', async () => {
-      // La fenêtre se ferme d'abord : le `confirm()` d'installation ne doit
-      // pas s'ouvrir par-dessus la modale.
-      close();
-      await this.checkForUpdates(true);
     });
     saveBtn?.addEventListener('click', async () => {
       const port = document.getElementById('setting-port')?.value;
@@ -953,8 +964,6 @@ class App {
       if (el) el.textContent = text;
     };
     set('about-version', version);
-    set('about-commit', info.commit);
-    set('about-date', info.commit_date || 'inconnue');
   }
 
   setupAboutModal() {
@@ -965,6 +974,35 @@ class App {
     document.getElementById('about-ok')?.addEventListener('click', close);
     modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
     document.getElementById('btn-about')?.addEventListener('click', () => modal.classList.add('active'));
+
+    // La verification de mise a jour a quitte les Parametres : elle ne
+    // concerne pas la configuration, et la fenetre « A propos » est
+    // l'endroit ou l'on regarde « que version est-ce, et est-ce qu'il y a
+    // plus recent ? ». Le bouton est rafraichi a chaque ouverture, donc le
+    // statut affiche correspond toujours a la tentative la plus recente.
+    document.getElementById('btn-about-update')?.addEventListener('click', async () => {
+      await this.checkForUpdates(true);
+      this.renderUpdateStatus(true);
+    });
+    this.renderUpdateStatus(false);
+  }
+
+  /// Affiche dans « A propos » le resultat de la derniere verification.
+  /// N'ecrit dans le DOM que si la fenetre existe (le bandeau, lui, ne
+  /// montre que la version).
+  renderUpdateStatus(checked) {
+    const el = document.getElementById('about-update-status');
+    if (!el) return;
+    if (!checked) {
+      el.textContent = this.updateStatus || '';
+      el.className = 'about-update-status' + (this.updateStatusError ? ' error' : '');
+      return;
+    }
+    // Verification manuelle : le statut vient d'etre renseigne, il ne reste
+    // qu'a le relire apres le `await` de `checkForUpdates`.
+    const txt = this.updateStatus || '';
+    el.textContent = txt || 'Aucune mise a jour disponible.';
+    el.className = 'about-update-status' + (this.updateStatusError ? ' error' : '');
   }
 
   async loadSettings() {

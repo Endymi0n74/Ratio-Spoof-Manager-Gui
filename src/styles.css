@@ -1108,14 +1108,24 @@ html, body {
   font-weight: 600;
   text-align: right;
   word-break: break-word;
-  /* Le commit doit pouvoir être copié à la main pour retrouver la source. */
   user-select: text;
 }
 
-.about-mono {
-  font-family: 'Cascadia Mono', Consolas, 'Courier New', monospace;
+/* Mise a jour dans la fenetre « A propos » */
+.about-update {
+  margin-top: 16px;
+}
+
+.about-update-status {
+  margin-top: 8px;
+  min-height: 16px;
   font-size: 12px;
-  color: var(--accent);
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.about-update-status.error {
+  color: var(--danger);
 }
 
 .about-hint {

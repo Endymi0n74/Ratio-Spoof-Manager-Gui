@@ -334,21 +334,17 @@ pub async fn quit_app(
     Ok(ApiResponse::ok(()))
 }
 
-/// Identité du binaire livré : version déclarée par le crate et commit source
-/// figé à la compilation par `build.rs`. Sert à tracer les livraisons (fenêtre
-/// « A propos ») sans dépendre du dépôt local de la machine qui exécute l'app.
+/// Version du binaire livré : celle déclarée par le crate et figée à la
+/// compilation. Sert à identifier la livraison qui tourne (fenêtre « A propos »
+/// et bandeau de l'en-tête) sans dépendre du dépôt local de la machine.
 #[derive(Debug, Serialize)]
 pub struct BuildInfo {
     pub version: String,
-    pub commit: String,
-    pub commit_date: String,
 }
 
 fn build_info() -> BuildInfo {
     BuildInfo {
         version: env!("CARGO_PKG_VERSION").to_string(),
-        commit: env!("RSM_COMMIT").to_string(),
-        commit_date: env!("RSM_COMMIT_DATE").to_string(),
     }
 }
 
@@ -361,10 +357,9 @@ pub fn get_build_info() -> Result<ApiResponse<BuildInfo>, String> {
 mod tests {
     use super::*;
 
-    /// Le binaire doit pouvoir dire d'où il vient : la version vient du crate,
-    /// le commit et sa date sont posés par `build.rs`. Hors dépôt git, `build.rs`
-    /// substitue un libellé explicite — jamais une valeur vide, qui laisserait un
-    /// trou dans la traçabilité.
+    /// Le binaire doit pouvoir dire quelle version il est : elle vient du
+    /// crate, figée à la compilation. Le test verrouille qu'elle n'est jamais
+    /// vide — un numéro manquant laisserait un trou dans l'identification.
     #[test]
     fn build_info_identifies_the_binary() {
         let info = build_info();
@@ -373,10 +368,6 @@ mod tests {
             env!("CARGO_PKG_VERSION"),
             "la version doit être celle déclarée par le crate"
         );
-        assert!(!info.commit.trim().is_empty(), "commit manquant");
-        assert!(
-            !info.commit_date.trim().is_empty(),
-            "date de commit manquante"
-        );
+        assert!(!info.version.trim().is_empty(), "version manquante");
     }
 }
