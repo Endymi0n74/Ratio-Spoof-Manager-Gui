@@ -134,6 +134,18 @@ jobs:
           Copy-Item "src-tauri/binaries/ratio-spoof-x86_64-pc-windows-msvc.exe" "artifacts/"
           Copy-Item "src-tauri/target/release/bundle/nsis/*" "artifacts/"
 
+          # GitHub stocke les assets en remplaçant les espaces par des points
+          # (constaté sur v2.0.4 : `Ratio Spoof Manager_...` publié en
+          # `Ratio.Spoof.Manager_...`). On renomme AVANT les empreintes et le
+          # manifeste : sinon l'URL de latest.json (espaces → %20) renvoie un
+          # 404 au moment d'une mise à jour, et SHA256SUMS liste un nom qui
+          # n'existe pas côté release.
+          Get-ChildItem "artifacts" -File | Where-Object { $_.Name -match ' ' } | ForEach-Object {
+            $newName = $_.Name -replace ' ', '.'
+            Rename-Item -Path $_.FullName -NewName $newName
+            Write-Host "Asset renomme : $($_.Name) -> $newName"
+          }
+
           # Manifeste de l'auto-updater : ses URLs pointent vers l'installateur
           # signé de cette même release. Il est publié comme asset, ce que lit
           # l'endpoint `releases/latest/download/latest.json` de tauri.conf.json.
@@ -171,4 +183,20 @@ jobs:
             gh release create $env:TAG --title "Ratio Spoof Manager $env:TAG" --generate-notes
           }
           gh release upload $env:TAG artifacts/* --clobber
+
+          # Garde-fou : chaque URL de mise à jour doit réellement résoudre.
+          # Un nom d'asset réécrit par GitHub laisserait une release dont
+          # l'updater plante au téléchargement — mieux vaut un workflow rouge
+          # qu'une mise à jour cassée en silence (404 constaté sur v2.0.4).
+          $manifest = Invoke-RestMethod "https://github.com/$env:GH_REPO/releases/download/$env:TAG/latest.json"
+          foreach ($platform in $manifest.platforms.PSObject.Properties) {
+            $url = $platform.Value.url
+            try {
+              Invoke-WebRequest -Uri $url -Method Head -UseBasicParsing -ErrorAction Stop | Out-Null
+              Write-Host "URL de mise a jour OK ($($platform.Name)) : $url"
+            } catch {
+              throw "URL de mise a jour inaccessible ($($platform.Name)) : $url — $_"
+            }
+          }
+
           gh release view $env:TAG --json url,assets --jq '"\(.url)", (.assets[] | "  \(.name)  \(.size) o  \(.digest)")'
