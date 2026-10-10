@@ -252,7 +252,7 @@ class App {
           <div class='app-logo'>RSM</div>
           <div>
             <span class='app-title'>Ratio Spoof Manager</span>
-            <span class='app-version' id='app-version'>v2.0.9</span>
+            <span class='app-version' id='app-version'>v2.0.10</span>
           </div>
         </div>
         <div class='app-header-right'>
@@ -389,7 +389,7 @@ class App {
             </div>
             <div class='about-update'>
               <button class='btn btn-secondary w-full' id='btn-about-update'>
-                ${this.icons.download || ''} Verifier une mise a jour
+                ${ICONS.download || ''} Verifier une mise a jour
               </button>
               <div class='about-update-status' id='about-update-status'></div>
             </div>
