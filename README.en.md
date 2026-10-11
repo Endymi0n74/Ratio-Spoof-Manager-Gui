@@ -71,10 +71,13 @@ npm run engine:fetch      # download the Go engine (SHA-256 verified)
 npm run tauri:dev         # run the app in development mode
 
 npm run build             # build the frontend (dist/)
+npm test                  # frontend tests (vitest + jsdom)
 cd src-tauri && cargo test --lib   # backend Rust tests
 cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
 npm run tauri:build       # production build (installer + portable)
 ```
+
+Both suites run in CI on every push: `cargo test` for the backend, `npm test` for the frontend (which actually instantiates the app and checks that the DOM gets filled). The frontend test is what stops a startup exception — which blanks the UI with no error message — from ever reaching a release.
 
 Le lockfile du moteur (`engine.lock.json`) pins the sidecar's version and checksum; `npm run engine:check` verifies the downloaded binary matches.
 

@@ -69,6 +69,14 @@ jobs:
       - name: Dépendances front
         run: npm ci
 
+      # Le frontend doit s'exécuter sans lever. Aucun maillon précédent ne le
+      # vérifiait : `node --check` ne voit qu'une erreur de syntaxe (le bundle
+      # de la 2.0.9 cassée était valide) et les tests Rust ne touchent qu'au
+      # backend. Une seule ligne suffit à vider l'application entière sans
+      # le moindre signe — voir src/app.test.js.
+      - name: Tests du frontend (vitest)
+        run: npm test
+
       # Le livrable doit rester constructible en continu, pas seulement au moment
       # de publier : même commande que release.yml (`beforeBuildCommand` inclus,
       # qui rejoue engine:fetch — sans effet si le sidecar est déjà conforme —

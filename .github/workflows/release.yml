@@ -68,6 +68,13 @@ jobs:
         working-directory: src-tauri
         run: cargo clippy --all-targets -- -D warnings
 
+      # Le frontend doit s'exécuter sans lever : le bundle est compressé par
+      # Tauri, donc ni le build ni `cargo test` ne peuvent détecter une
+      # exception au démarrage. La 2.0.9 a été publiée ainsi : fenêtre vide,
+      # aucun message, workflow vert. Voir src/app.test.js.
+      - name: Tests du frontend (vitest)
+        run: npm test
+
       # Le bundle NSIS est obligatoire : l'auto-updater n'installe que des
       # installateurs signés (`createUpdaterArtifacts` dans tauri.conf.json), pas
       # le zip portable. La clé privée est donc requise ici — sans elle, le build

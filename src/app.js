@@ -41,7 +41,10 @@ function sessionHash(s) {
   return s.status + '|' + (s.total_uploaded_mb || 0).toFixed(2) + '|' + (s.current_upload_speed || 0).toFixed(2) + '|' + (s.ratio || 0).toFixed(2) + '|' + (s.progress_percent || 0).toFixed(2) + '|' + (s.logs ? s.logs.length : 0) + '|' + (s.elapsed_seconds || 0);
 }
 
-class App {
+// Exporte pour les tests (`src/app.test.js`) qui instancient `App`
+// directement. Sans effet sur la production : le point d'entree reste
+// l'ecouteur `DOMContentLoaded` en bas de fichier.
+export class App {
   constructor() {
     this.sessions = [];
     this.settings = null;

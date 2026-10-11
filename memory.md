@@ -113,6 +113,17 @@ Détail Windows : `GenerateConsoleCtrlEvent` **renvoie succès même quand rien 
 
 - **Validée par l'utilisateur** : la 2.0.10 s'ouvre normalement (fenêtre rendue) et la mise à jour automatique fonctionne. Le cycle 2.0.9 cassée → 2.0.10 correcte est donc bouclé en conditions réelles.
 
+## Tests frontend (11/10/2026) — comble le trou de la 2.0.9
+
+- **`src/app.test.js` (Vitest + jsdom), 6 tests.** Ils instancient reellement `App` et exigent que le DOM soit rempli : c'est ce qui manquait pour voir la fenêtre vide de la 2.0.9. **`export class App`** ajouté dans `app.js` (sans effet en production : le point d'entrée reste `DOMContentLoaded`).
+- **Vérifié par mutation :** la faute `${this.icons.download}` réintroduite fait **échouer 5 tests sur 6** avec le `TypeError` exact. La CI aurait donc bloqué la 2.0.9. C'est la preuve que le test mesure bien ce qu'il prétend — pas seulement qu'il passe.
+- **Choix d'outils : `vitest@2.1.9` + `jsdom@25`, pas la dernière version de Vitest.** Le projet est en Vite 5 ; Vitest 3+ exige Vite 6+ et `npm install` échoue sur `ERESOLVE`. Ne pas « mettre à jour Vitest » sans accompaniment Vite.
+- **`src/test-setup.js` comble deux manques de jsdom**, tous deux des limites de l'environnement et non des défauts applicatifs : `<canvas>.getContext('2d')` (sinon `SpeedChart` lève sur `ctx.scale` d'un `null`) et `IntersectionObserver` (sinon `setupLazyCharts` échoue). Doublures minimales, sans écriture de pixels.
+- **Piège Node ≥ 22 :** Node expose un `localStorage` **global expérimental** qui **écrase** celui de jsdom — `window.localStorage` vaut `undefined` et Node journalise `ExperimentalWarning: localStorage is not available because --localstorage-file was not provided`. `environmentOptions.jsdom.url` ne suffit pas à le corriger. D'où le `localStorage` de repli en mémoire dans `test-setup.js`. **À retirer quand Vitest cessera d'interférer avec ce global.**
+- **Deux détails d'environnement qui ont coûté du temps :** jsdom part d'un document vide, il faut recréer `<div id="app">` (celui d'`index.html`) sinon `render()` échoue sur un `null` ; et `import { App }` doit être **après** les `vi.mock` — les imports sont hissés, l'ordre écrit ne compte pas.
+- **Branché dans les deux workflows :** `npm test` après `npm ci` dans `ci.yml`, et avant le bundle NSIS dans `release.yml`. Le workflow de release échoue désormais **avant** de publier si le frontend ne s'exécute pas.
+- **`npm test` ajouté aux scripts** ; `vite.config.js` porte la section `test` (environnement jsdom, `url`, `setupFiles`, `include: src/**/*.test.js`).
+
 ## Ménage du 10/10/2026 (après la 2.0.10)
 
 - **Releases GitHub :** `v2.0.4`, `v2.0.6`, `v2.0.7`, `v2.0.8`, `v2.0.9` supprimées. Seul `v2.0.10` reste (dernière release et « Latest »).
