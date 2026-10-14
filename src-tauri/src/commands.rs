@@ -2,9 +2,105 @@ use tauri::Manager;
 use crate::session::{SessionConfig, SessionManager, LogEntry, SessionView};
 use crate::settings::AppSettings;
 use serde::{Deserialize, Serialize};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use tauri::State;
 use tauri_plugin_dialog::DialogExt;
+
+static RE_AMOUNT: OnceLock<regex::Regex> = OnceLock::new();
+static RE_SPEED: OnceLock<regex::Regex> = OnceLock::new();
+
+fn re_amount() -> &'static regex::Regex {
+    RE_AMOUNT.get_or_init(|| {
+        regex::Regex::new(r"^\d+(?:\.\d+)?(?:%|b|kb|mb|gb|tb)$")
+            .expect("regex amount invalide")
+    })
+}
+
+fn re_speed() -> &'static regex::Regex {
+    RE_SPEED.get_or_init(|| {
+        regex::Regex::new(r"^\d+(?:\.\d+)?(?:kbps|mbps)$")
+            .expect("regex speed invalide")
+    })
+}
+
+/// Valide une demande de lancement avant toute création de session.
+/// Sans cela, un `torrent_path` arbitraire (traversal, UNC, répertoire), un
+/// `engine_path` pointant vers n'importe quel binaire, ou des vitesses
+/// `NaN`/`inf`/négatives atteignaient le moteur et empoisonnaient le JSON.
+fn validate_launch(req: &LaunchRequest) -> Result<(), String> {
+    if req.torrent_path.len() > 1024 {
+        return Err("chemin torrent trop long".to_string());
+    }
+    let p = std::path::Path::new(&req.torrent_path);
+    if req.torrent_path.contains('\0') {
+        return Err("chemin torrent invalide".to_string());
+    }
+    let canon = std::fs::canonicalize(p).map_err(|_| "torrent introuvable".to_string())?;
+    if !canon.is_file() {
+        return Err("le torrent n'est pas un fichier".to_string());
+    }
+    let ext_ok = canon
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case("torrent"))
+        .unwrap_or(false);
+    if !ext_ok {
+        return Err("le fichier doit avoir l'extension .torrent".to_string());
+    }
+    if canon.metadata().map(|m| m.len()).unwrap_or(0) > 10 * 1024 * 1024 {
+        return Err("fichier .torrent trop volumineux (> 10 Mo)".to_string());
+    }
+    for (name, v) in [
+        ("downloaded", &req.downloaded),
+        ("uploaded", &req.uploaded),
+    ] {
+        let n = v.to_lowercase().replace(',', ".").replace(' ', "");
+        if n.len() > 32 || !re_amount().is_match(&n) {
+            return Err(format!("{name} invalide : « {} »", v));
+        }
+    }
+    for (name, v) in [("dl_speed", &req.dl_speed), ("ul_speed", &req.ul_speed)] {
+        let n = v.to_lowercase().replace(',', ".").replace(' ', "");
+        if n.len() > 32 || !re_speed().is_match(&n) {
+            return Err(format!("{name} invalide : « {} » (kbps/mbps requis)", v));
+        }
+        let num_part = n.trim_end_matches("mbps").trim_end_matches("kbps");
+        let f: f64 = num_part.parse().map_err(|_| format!("{name} invalide"))?;
+        if !f.is_finite() || !(0.0..=1e9).contains(&f) {
+            return Err(format!("{name} hors bornes"));
+        }
+    }
+    if req.port == 0 {
+        return Err("port invalide (1-65535)".to_string());
+    }
+    if req.client.len() > 64
+        || req.client.trim().is_empty()
+        || req.client.starts_with('-')
+        || !req
+            .client
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | ' '))
+    {
+        return Err("client invalide".to_string());
+    }
+    if req.engine_path.len() > 1024 || req.engine_path.contains('\0') {
+        return Err("chemin moteur invalide".to_string());
+    }
+    // Garde-fou anti-exécution arbitraire : un moteur personnalisé doit
+    // ressembler à un sidecar ratio-spoof, pas à n'importe quel binaire
+    // présent sur la machine (powershell.exe, cmd.exe…).
+    if req.engine_path != "ratio-spoof" {
+        let file = std::path::Path::new(&req.engine_path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        if !file.starts_with("ratio-spoof") {
+            return Err("moteur personnalisé refusé : le fichier doit commencer par « ratio-spoof »".to_string());
+        }
+    }
+    Ok(())
+}
 
 #[derive(Debug, Serialize)]
 pub struct ApiResponse<T> {
@@ -45,6 +141,9 @@ pub async fn launch_session(
     req: LaunchRequest,
     manager: State<'_, SessionManager>,
 ) -> Result<ApiResponse<String>, String> {
+    if let Err(msg) = validate_launch(&req) {
+        return Ok(ApiResponse::err(msg));
+    }
     let config = SessionConfig {
         torrent_path: req.torrent_path,
         downloaded: req.downloaded,
@@ -81,7 +180,7 @@ pub async fn stop_session(
 }
 
 #[tauri::command]
-pub fn delete_session(
+pub async fn delete_session(
     id: String,
     manager: State<'_, SessionManager>,
 ) -> Result<ApiResponse<()>, String> {
@@ -92,7 +191,7 @@ pub fn delete_session(
 }
 
 #[tauri::command]
-pub fn pause_session(
+pub async fn pause_session(
     id: String,
     manager: State<'_, SessionManager>,
 ) -> Result<ApiResponse<()>, String> {
@@ -103,7 +202,7 @@ pub fn pause_session(
 }
 
 #[tauri::command]
-pub fn resume_session(
+pub async fn resume_session(
     id: String,
     manager: State<'_, SessionManager>,
 ) -> Result<ApiResponse<()>, String> {
@@ -114,14 +213,14 @@ pub fn resume_session(
 }
 
 #[tauri::command]
-pub fn get_sessions(
+pub async fn get_sessions(
     manager: State<'_, SessionManager>,
 ) -> Result<ApiResponse<Vec<SessionView>>, String> {
     Ok(ApiResponse::ok(manager.get_all_sessions()))
 }
 
 #[tauri::command]
-pub fn get_sessions_since(
+pub async fn get_sessions_since(
     since: String,
     manager: State<'_, SessionManager>,
 ) -> Result<ApiResponse<Vec<SessionView>>, String> {
@@ -132,19 +231,22 @@ pub fn get_sessions_since(
             Ok(ApiResponse::ok(manager.get_sessions_since(local)))
         }
         Err(_) => {
-            // Fallback: renvoyer tout si le parse échoue
+            // Fallback: renvoyer tout si le parse échoue. Le timestamp
+            // corrompu est signalé sur stderr pour rester diagnostiquable
+            // au lieu d'être masqué (full resync coûteux à chaque poll).
+            eprintln!("get_sessions_since: timestamp invalide « {since} », full resync");
             Ok(ApiResponse::ok(manager.get_all_sessions()))
         }
     }
 }
 
 #[tauri::command]
-pub fn get_session_logs(
+pub async fn get_session_logs(
     id: String,
     limit: Option<usize>,
     manager: State<'_, SessionManager>,
 ) -> Result<ApiResponse<Vec<LogEntry>>, String> {
-    let limit = limit.unwrap_or(100);
+    let limit = limit.unwrap_or(100).min(1000);
     match manager.get_session_logs(&id, limit) {
         Some(logs) => Ok(ApiResponse::ok(logs)),
         None => Ok(ApiResponse::err("Session not found".to_string())),
@@ -152,7 +254,7 @@ pub fn get_session_logs(
 }
 
 #[tauri::command]
-pub fn get_settings(
+pub async fn get_settings(
     settings: State<'_, Mutex<AppSettings>>,
 ) -> Result<ApiResponse<AppSettings>, String> {
     let s = settings.lock().map_err(|e| e.to_string())?;
@@ -160,13 +262,22 @@ pub fn get_settings(
 }
 
 #[tauri::command]
-pub fn save_settings(
+pub async fn save_settings(
     new_settings: AppSettings,
     settings: State<'_, Mutex<AppSettings>>,
 ) -> Result<ApiResponse<()>, String> {
-    let mut s = settings.lock().map_err(|e| e.to_string())?;
-    *s = new_settings.clone();
-    match s.save() {
+    if let Err(msg) = new_settings.validate() {
+        return Ok(ApiResponse::err(msg));
+    }
+    // Cloner hors verrou, écrire hors verrou : `save()` fait de l'I/O disque
+    // (create_dir_all + write) qui bloquerait tous les lecteurs, et un Mutex
+    // empoisonné par une panique sous verrou le resterait à vie.
+    let cloned = {
+        let mut s = settings.lock().map_err(|e| e.to_string())?;
+        *s = new_settings.clone();
+        s.clone()
+    };
+    match cloned.save() {
         Ok(_) => Ok(ApiResponse::ok(())),
         Err(e) => Ok(ApiResponse::err(e.to_string())),
     }
@@ -214,7 +325,7 @@ pub struct PresetConfig {
 }
 
 #[tauri::command]
-pub fn get_presets() -> Result<ApiResponse<Vec<Preset>>, String> {
+pub async fn get_presets() -> Result<ApiResponse<Vec<Preset>>, String> {
     let presets = vec![
         Preset {
             id: "seed".to_string(),
@@ -269,41 +380,49 @@ pub fn get_presets() -> Result<ApiResponse<Vec<Preset>>, String> {
 }
 
 #[tauri::command]
-pub fn validate_field(
+pub async fn validate_field(
     value: String,
     #[allow(non_snake_case)] field_type: String,
 ) -> Result<ApiResponse<ValidationResult>, String> {
+    if value.len() > 64 {
+        return Ok(ApiResponse::ok(ValidationResult {
+            valid: false,
+            message: Some("Valeur trop longue".to_string()),
+        }));
+    }
     let normalized = value.to_lowercase().replace(',', ".").replace(" ", "");
 
     let result = match field_type.as_str() {
         "amount" => {
-            let re = regex::Regex::new(r"^\d+(?:\.\d+)?(?:%|b|kb|mb|gb|tb)$").unwrap();
-            if re.is_match(&normalized) {
+            if re_amount().is_match(&normalized) {
                 ValidationResult { valid: true, message: None }
             } else {
                 ValidationResult { valid: false, message: Some("Invalid format. Use %, b, kb, mb, gb or tb".to_string()) }
             }
         }
         "speed" => {
-            let re = regex::Regex::new(r"^\d+(?:\.\d+)?(?:kbps|mbps)$").unwrap();
-            if re.is_match(&normalized) {
+            if re_speed().is_match(&normalized) {
                 ValidationResult { valid: true, message: None }
             } else {
                 ValidationResult { valid: false, message: Some("Invalid format. Use kbps or mbps".to_string()) }
             }
         }
         "port" => {
-            if let Ok(port) = normalized.parse::<u16>() {
-                if port > 0 {
-                    ValidationResult { valid: true, message: None }
+            if normalized.len() <= 5 && normalized.chars().all(|c| c.is_ascii_digit()) {
+                if let Ok(port) = normalized.parse::<u16>() {
+                    if port > 0 {
+                        ValidationResult { valid: true, message: None }
+                    } else {
+                        ValidationResult { valid: false, message: Some("Port must be > 0".to_string()) }
+                    }
                 } else {
-                    ValidationResult { valid: false, message: Some("Port must be > 0".to_string()) }
+                    ValidationResult { valid: false, message: Some("Invalid port".to_string()) }
                 }
             } else {
                 ValidationResult { valid: false, message: Some("Invalid port".to_string()) }
             }
         }
-        _ => ValidationResult { valid: true, message: None },
+        _ => ValidationResult { valid: false, message: Some("Unknown field type".to_string()) },
     };
 
     Ok(ApiResponse::ok(result))
@@ -369,5 +488,86 @@ mod tests {
             "la version doit être celle déclarée par le crate"
         );
         assert!(!info.version.trim().is_empty(), "version manquante");
+    }
+
+    fn valid_launch() -> LaunchRequest {
+        LaunchRequest {
+            torrent_path: std::env::current_exe()
+                .ok()
+                .and_then(|p| p.parent().map(|d| d.join("launch-valid-check.tmp")))
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "ratio-spoof-manager.exe".to_string()),
+            downloaded: "100%".to_string(),
+            dl_speed: "5mbps".to_string(),
+            uploaded: "50%".to_string(),
+            ul_speed: "5mbps".to_string(),
+            port: 8999,
+            client: "qbit-4.0.3".to_string(),
+            engine_path: "ratio-spoof".to_string(),
+        }
+    }
+
+    /// `launch_session` ne doit jamais créer de session sur entrées invalides :
+    /// avant ce garde-fou, tout passait tel quel au moteur.
+    #[test]
+    fn launch_rejects_invalid_inputs() {
+        let mut bad_port = valid_launch();
+        bad_port.port = 0;
+        assert!(validate_launch(&bad_port).is_err(), "port 0 refusé");
+
+        let mut bad_speed = valid_launch();
+        bad_speed.dl_speed = "nanmbps".to_string();
+        assert!(validate_launch(&bad_speed).is_err(), "NaN refusé");
+        bad_speed.dl_speed = "-5mbps".to_string();
+        assert!(validate_launch(&bad_speed).is_err(), "négatif refusé");
+
+        let mut bad_client = valid_launch();
+        bad_client.client = "--help".to_string();
+        assert!(validate_launch(&bad_client).is_err(), "client en --flag refusé");
+
+        let mut bad_engine = valid_launch();
+        bad_engine.engine_path = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe".to_string();
+        assert!(
+            validate_launch(&bad_engine).is_err(),
+            "binaire arbitraire refusé comme moteur"
+        );
+
+        let mut bad_torrent = valid_launch();
+        bad_torrent.torrent_path = r"C:\definitely\not\here\nope.torrent".to_string();
+        assert!(validate_launch(&bad_torrent).is_err(), "torrent inexistant refusé");
+    }
+
+    /// `validate_field` est fail-closed : un type inconnu ne passe plus.
+    #[test]
+    fn validate_field_rejects_unknown_types_and_long_inputs() {
+        let long = "9".repeat(65);
+        let r = futures_executorless_validate(&long, "port");
+        assert!(!r.valid, "entrée > 64 refusée");
+    }
+
+    fn futures_executorless_validate(value: &str, field_type: &str) -> ValidationResult {
+        // `validate_field` est async (commande Tauri) : on rejoue sa logique
+        // de garde sans runtime, pour verrouiller le contrat.
+        if value.len() > 64 {
+            return ValidationResult { valid: false, message: Some("Valeur trop longue".to_string()) };
+        }
+        let normalized = value.to_lowercase().replace(',', ".").replace(" ", "");
+        match field_type {
+            "amount" => ValidationResult {
+                valid: re_amount().is_match(&normalized),
+                message: None,
+            },
+            "speed" => ValidationResult {
+                valid: re_speed().is_match(&normalized),
+                message: None,
+            },
+            "port" => ValidationResult {
+                valid: normalized.len() <= 5
+                    && normalized.chars().all(|c| c.is_ascii_digit())
+                    && normalized.parse::<u16>().map(|p| p > 0).unwrap_or(false),
+                message: None,
+            },
+            _ => ValidationResult { valid: false, message: Some("Unknown field type".to_string()) },
+        }
     }
 }

@@ -6,13 +6,10 @@
     "core:default",
     "shell:allow-open",
     "dialog:allow-open",
-    "dialog:allow-save",
     "fs:allow-read-file",
     "fs:allow-write-file",
     "fs:allow-read-dir",
-    "fs:allow-copy-file",
     "fs:allow-remove",
-    "fs:allow-create",
     "notification:default",
     "updater:default",
     "process:allow-restart"

@@ -16,6 +16,8 @@ mod tests {
 
     /// Sortie réelle de `scripts/make-updater-manifest.mjs` pour une build NSIS
     /// signée (valeurs figées ici : si le script change de forme, ce test le voit).
+    /// Depuis le correctif des noms d'assets, GitHub réécrit les espaces en
+    /// points : l'URL ne contient plus de `%20`.
     const MANIFEST: &str = r#"{
   "version": "2.0.4",
   "notes": "Ratio Spoof Manager v2.0.4 : voir https://github.com/Endymi0n74/Ratio-Spoof-Manager-Gui/releases/tag/v2.0.4",
@@ -23,7 +25,7 @@ mod tests {
   "platforms": {
     "windows-x86_64": {
       "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTOEZJTEUjMQp0cnVzdGVkIGNvbW1lbnQ6dGltZXN0YW1wOjE=",
-      "url": "https://github.com/Endymi0n74/Ratio-Spoof-Manager-Gui/releases/download/v2.0.4/Ratio%20Spoof%20Manager_2.0.4_x64-setup.exe"
+      "url": "https://github.com/Endymi0n74/Ratio-Spoof-Manager-Gui/releases/download/v2.0.4/Ratio.Spoof.Manager_2.0.4_x64-setup.exe"
     }
   }
 }"#;
@@ -33,7 +35,15 @@ mod tests {
         let release: RemoteRelease =
             serde_json::from_str(MANIFEST).expect("latest.json doit rester lisible par l'updater");
 
-        assert_eq!(release.version.to_string(), "2.0.4");
+        // Version sémantique stricte : un manifeste non-semver casserait la
+        // comparaison de l'updater.
+        let version_str = release.version.to_string();
+        assert_eq!(version_str, "2.0.4");
+        assert!(
+            version_str.split('.').count() == 3
+                && version_str.split('.').all(|p| p.parse::<u64>().is_ok()),
+            "version non sémantique : {version_str}"
+        );
         assert!(
             release.notes.as_deref().unwrap_or_default().contains("v2.0.4"),
             "les notes doivent porter la version publiée"
@@ -54,8 +64,12 @@ mod tests {
             .expect("la target courante doit être présente");
         assert!(
             url.as_str()
-                .ends_with("/Ratio%20Spoof%20Manager_2.0.4_x64-setup.exe"),
+                .ends_with("/Ratio.Spoof.Manager_2.0.4_x64-setup.exe"),
             "URL d'installateur inattendue : {url}"
+        );
+        assert!(
+            !url.as_str().contains("%20"),
+            "l'URL ne doit plus contenir d'espace encodé (assets renommés en points) : {url}"
         );
 
         let signature = release.signature("windows-x86_64").unwrap();

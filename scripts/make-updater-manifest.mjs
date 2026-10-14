@@ -30,11 +30,13 @@ Options :
   --dir=<chemin>     Dossier contenant les artefacts signés (défaut : artifacts)
   --out=<chemin>     Fichier de sortie (défaut : <dir>/latest.json)
   --notes=<texte>    Texte affiché par l'updater au moment de l'installation
+  --pub-date=<date>  Date de publication RFC 3339 (défaut : maintenant ; utile
+                     pour une régénération reproductible)
   -h, --help         Affiche cette aide
 `;
 
 function parseArgs(argv) {
-  const opts = { version: null, baseUrl: null, dir: "artifacts", out: null, notes: null, help: false };
+  const opts = { version: null, baseUrl: null, dir: "artifacts", out: null, notes: null, pubDate: null, help: false };
   for (const arg of argv) {
     const eq = arg.indexOf("=");
     const name = eq === -1 ? arg : arg.slice(0, eq);
@@ -54,6 +56,9 @@ function parseArgs(argv) {
         break;
       case "--notes":
         opts.notes = value ?? opts.notes;
+        break;
+      case "--pub-date":
+        opts.pubDate = value ?? opts.pubDate;
         break;
       case "-h":
       case "--help":
@@ -75,6 +80,10 @@ if (opts.help) {
 if (!opts.version || !opts.baseUrl) {
   console.error(HELP);
   console.error("Il manque --version et/ou --base-url.");
+  process.exit(2);
+}
+if (!/^\d+\.\d+\.\d+$/.test(opts.version)) {
+  console.error(`Version invalide : « ${opts.version} » (attendu x.y.z, sans préfixe v).`);
   process.exit(2);
 }
 
@@ -116,15 +125,38 @@ if (!target.includes("_x64") && !target.includes("x86_64")) {
   console.error(`Artefact ${target} : arch non reconnue, la plateforme windows-x86_64 serait fausse.`);
   process.exit(1);
 }
+if (/\s/.test(target)) {
+  console.error(
+    `Artefact « ${target} » : nom avec espace — GitHub le réécrit en points à la réception et l'URL publiée renverrait 404.\n` +
+      `  Renommez espaces → points AVANT les empreintes et le manifeste (cf. release.yml).`,
+  );
+  process.exit(1);
+}
+
+// Le `.sig` est un fichier minisign : commentaire non fiable, signature,
+// commentaire de confiance, signature globale. On refuse un contenu qui n'a
+// pas cette forme plutôt que de publier une signature invalide.
+const sigText = readFileSync(join(dir, sig), "utf8").trim();
+if (!/^untrusted comment:.*\n[A-Za-z0-9+/=]+\ntrusted comment:.*\n[A-Za-z0-9+/=]+$/.test(sigText)) {
+  console.error(`Signature ${sig} : format minisign inattendu, manifeste refusé.`);
+  process.exit(1);
+}
+
+let pubDate = opts.pubDate ?? new Date().toISOString();
+if (Number.isNaN(Date.parse(pubDate))) {
+  console.error(`--pub-date invalide : « ${opts.pubDate} » (RFC 3339 attendu).`);
+  process.exit(2);
+}
+pubDate = new Date(pubDate).toISOString();
 
 const manifest = {
   version: opts.version,
   notes: opts.notes ?? `Ratio Spoof Manager ${opts.version}`,
-  pub_date: new Date().toISOString(),
+  pub_date: pubDate,
   platforms: {
     "windows-x86_64": {
-      signature: readFileSync(join(dir, sig), "utf8").trim(),
-      url: `${opts.baseUrl.replace(/\/+$/, "")}/${encodeURI(target)}`,
+      signature: sigText,
+      url: `${opts.baseUrl.replace(/\/+$/, "")}/${encodeURIComponent(target)}`,
     },
   },
 };

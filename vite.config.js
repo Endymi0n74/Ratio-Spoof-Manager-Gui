@@ -14,6 +14,18 @@ import { defineConfig } from "vite";
 // `localStorage` global experimental ecrase celui de jsdom et laisse
 // `window.localStorage` a `undefined` (voir le fichier pour le detail).
 export default defineConfig({
+  clearScreen: false,
+  server: {
+    port: 1420,
+    strictPort: true,
+  },
+  build: {
+    // Exigé par tauri.conf.json (`frontendDist: ../dist`) et par
+    // `tauri::generate_context!` : sans `dist/`, le crate ne compile pas.
+    // Ne pas monter à Vite 6 sans Vitest 3 (ERESOLVE, cf. memory.md).
+    outDir: "dist",
+    emptyOutDir: true,
+  },
   test: {
     environment: "jsdom",
     environmentOptions: {

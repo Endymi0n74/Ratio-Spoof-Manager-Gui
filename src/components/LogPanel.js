@@ -57,8 +57,10 @@ export class LogPanel {
     }
 
     const lines = logs.map(log => {
-      const time = new Date(log.timestamp).toLocaleString('fr-FR');
-      return `[${time}] [${log.level.toUpperCase()}] ${log.message}`;
+      const ts = new Date(log.timestamp);
+      const time = Number.isNaN(ts.getTime()) ? '?' : ts.toLocaleString('fr-FR');
+      const lvl = String(log.level ?? 'info').toUpperCase();
+      return `[${time}] [${lvl}] ${log.message ?? ''}`;
     }).join('\n');
 
     const blob = new Blob([lines], { type: 'text/plain' });
@@ -99,7 +101,7 @@ export class LogPanel {
 
   renderEntries(logs) {
     if (!this.entriesContainer) return;
-    const filtered = this.filterLogs(logs);
+    const filtered = this.filterLogs(logs).slice(-500);
 
     if (filtered.length === 0) {
       this.entriesContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 12px; padding: 20px; text-align: center;">Aucun log</div>';
@@ -111,14 +113,16 @@ export class LogPanel {
   }
 
   renderLogEntry(log) {
-    const time = new Date(log.timestamp).toLocaleTimeString('fr-FR', {
+    const ts = new Date(log.timestamp);
+    const time = Number.isNaN(ts.getTime()) ? '—' : ts.toLocaleTimeString('fr-FR', {
       hour: '2-digit', minute: '2-digit', second: '2-digit'
     });
+    const lvl = ['info', 'debug', 'tracker', 'warn', 'error'].includes(log.level) ? log.level : 'info';
 
     return `
       <div class="log-entry">
         <span class="log-timestamp">${time}</span>
-        <span class="log-level ${log.level}">${log.level}</span>
+        <span class="log-level ${lvl}">${lvl}</span>
         <span class="log-message">${this.escapeHtml(log.message)}</span>
       </div>
     `;

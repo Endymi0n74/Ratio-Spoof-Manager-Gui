@@ -29,9 +29,12 @@ jobs:
     steps:
       # v5+ = runtime Node 24 (plus d'avertissement de dépréciation) ; `cache:
       # npm` reste supporté et l'historique complet du tag reste nécessaire.
+      # En déclenchement manuel, on construit le tag demandé, pas master :
+      # sinon la release publierait un binaire différent du tag.
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          ref: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag || github.sha }}
 
       - uses: actions/setup-node@v7
         with:
@@ -96,10 +99,19 @@ jobs:
           $version = $tag.TrimStart("v")
 
           # Le tag doit correspondre à la version déclarée, sinon l'archive porterait
-          # un numéro de version faux.
+          # un numéro de version faux. Les trois fichiers portent la version :
+          # une dérive entre eux a déjà failli passer inaperçue.
           $declared = (Get-Content package.json -Raw | ConvertFrom-Json).version
           if ($declared -ne $version) {
             throw "Version incohérente : tag $tag mais package.json $declared"
+          }
+          $tauri = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          if ($tauri -ne $version) {
+            throw "Version incohérente : tag $tag mais tauri.conf.json $tauri"
+          }
+          $cargo = (Select-String -Path src-tauri/Cargo.toml -Pattern '^version = "([0-9.]+)"').Matches[0].Groups[1].Value
+          if ($cargo -ne $version) {
+            throw "Version incohérente : tag $tag mais Cargo.toml $cargo"
           }
 
           $name = "ratio-spoof-manager-v$version-windows-x64"
@@ -195,7 +207,18 @@ jobs:
           # Un nom d'asset réécrit par GitHub laisserait une release dont
           # l'updater plante au téléchargement — mieux vaut un workflow rouge
           # qu'une mise à jour cassée en silence (404 constaté sur v2.0.4).
-          $manifest = Invoke-RestMethod "https://github.com/$env:GH_REPO/releases/download/$env:TAG/latest.json"
+          # `releases/latest` est servi par CDN (~5 min de cache) : on relit
+          # l'asset immuable du tag, avec retry, pas l'alias `latest`.
+          $manifest = $null
+          for ($i = 1; $i -le 5; $i++) {
+            try {
+              $manifest = Invoke-RestMethod "https://github.com/$env:GH_REPO/releases/download/$env:TAG/latest.json" -MaximumRetryCount 3 -RetryIntervalSec 15
+              break
+            } catch {
+              if ($i -eq 5) { throw "latest.json illisible après 5 tentatives : $_" }
+              Start-Sleep -Seconds (15 * $i)
+            }
+          }
           foreach ($platform in $manifest.platforms.PSObject.Properties) {
             $url = $platform.Value.url
             try {

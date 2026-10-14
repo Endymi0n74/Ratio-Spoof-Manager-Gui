@@ -110,7 +110,9 @@ if (!window.matchMedia) {
 // `app.js` instancie `App` sur `DOMContentLoaded`. On l'importe une fois le
 // DOM pret, puis on declenche l'evenement nous-memes pour controlling
 // l'initialisation.
-import { App } from "./app.js";
+import { App, compareVersions } from "./app.js";
+import { escapeHtml, escapeAttr } from "./components/escape.js";
+import { SessionCard } from "./components/SessionCard.js";
 
 describe("demarrage de l'application", () => {
   let errors;
@@ -175,5 +177,42 @@ describe("demarrage de l'application", () => {
     // laisse passer les appels asynchrones (loadSettings, loadPresets...)
     await new Promise((r) => setTimeout(r, 50));
     expect(errors, "aucune erreur ne doit etre levee au demarrage").toEqual([]);
+  });
+});
+
+describe("garde anti-downgrade", () => {
+  it("compare les versions en semver", () => {
+    expect(compareVersions("2.0.10", "2.0.9")).toBe(1);
+    expect(compareVersions("2.0.9", "2.0.10")).toBe(-1);
+    expect(compareVersions("2.0.10", "2.0.10")).toBe(0);
+    expect(compareVersions("v2.0.10", "2.0.9")).toBe(1);
+  });
+});
+
+describe("echappement XSS", () => {
+  it("neutralise les balises dans les textes", () => {
+    expect(escapeHtml('"><img src=x onerror=alert(1)>')).not.toContain("<img");
+    expect(escapeAttr('a"b')).toContain("&quot;");
+  });
+
+  it("la carte de session n'injecte pas le nom du torrent", () => {
+    const evil = {
+      id: "s1",
+      status: "running",
+      config: { torrent_path: '"><svg onload=alert(1)>.torrent', client: "<b>moi</b>", port: 8999 },
+      total_uploaded_mb: 1,
+      current_upload_speed: 1,
+      total_downloaded_mb: 1,
+      ratio: 1,
+      progress_percent: 10,
+      elapsed_seconds: 5,
+    };
+    const card = new SessionCard(evil, { icons: {}, lazyChart: true });
+    // Les entités échappées (`&lt;svg`) restent lisibles en chaîne : on
+    // vérifie donc l'absence de vrais nœuds injectés, pas de sous-chaînes.
+    expect(card.element.querySelector("svg"), "aucun svg injecté").toBeNull();
+    expect(card.element.querySelector("img"), "aucun img injecté").toBeNull();
+    expect(card.element.querySelector("b"), "aucun b injecté").toBeNull();
+    expect(card.element.querySelector(".session-name")?.textContent).toContain(".torrent");
   });
 });

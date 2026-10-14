@@ -1,5 +1,6 @@
 import { open } from '@tauri-apps/plugin-dialog';
 import { Toast } from './Toast.js';
+import { escapeHtml, escapeAttr } from './escape.js';
 
 // Seuls les clients supportes par le backend ratio-spoof
 const SUPPORTED_CLIENTS = [
@@ -128,8 +129,8 @@ export class NewSessionForm {
     if (!bar) return;
 
     bar.innerHTML = this.presets.map(p => `
-      <button class="preset-btn" data-preset="${p.id}" title="${p.description || ''}">
-        ${p.name}
+      <button class="preset-btn" data-preset="${escapeAttr(String(p.id ?? ''))}" title="${escapeAttr(String(p.description || ''))}">
+        ${escapeHtml(String(p.name ?? ''))}
       </button>
     `).join('');
   }
@@ -149,7 +150,7 @@ export class NewSessionForm {
       e.preventDefault();
       dropZone.classList.remove('drag-over');
       const files = e.dataTransfer.files;
-      if (files.length > 0 && files[0].name.endsWith('.torrent')) {
+      if (files.length > 0 && /\.torrent$/i.test(files[0].name) && (files[0].size ?? 1) > 0) {
         this.setTorrent(files[0].path || files[0].name);
       }
     });
@@ -191,12 +192,14 @@ export class NewSessionForm {
   }
 
   saveCurrentPreset() {
-    const name = prompt('Nom du preset :');
-    if (!name) return;
+    const raw = prompt('Nom du preset :');
+    if (!raw) return;
+    const name = String(raw).replace(/[<>&"']/g, '').trim().slice(0, 40);
+    if (!name) { Toast.error('Nom de preset invalide'); return; }
 
     const preset = {
       id: 'custom_' + Date.now(),
-      name: name,
+      name,
       description: 'Preset personnalise',
       config: {
         downloaded: document.getElementById('field-dl').value,
@@ -359,9 +362,11 @@ export class NewSessionForm {
 
     let valid = true, msg = '';
     if (field === 'port') {
-      const n = parseInt(value);
-      valid = !isNaN(n) && n > 0 && n <= 65535;
-      msg = valid ? 'OK' : 'Port invalide';
+      const t = value.trim();
+      const strict = /^\d{1,5}$/.test(t);
+      const n = strict ? Number(t) : NaN;
+      valid = strict && Number.isInteger(n) && n >= 1 && n <= 65535 && String(n) === t;
+      msg = valid ? 'OK' : 'Port invalide (1-65535)';
     } else {
       valid = /^\d+(\.\d+)?\s*(%|b|kb|mb|gb|tb)$/i.test(value);
       msg = valid ? 'OK' : 'Format: 100% ou 500MB';

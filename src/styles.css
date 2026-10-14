@@ -5,7 +5,7 @@
   --bg-hover: #252a38;
   --text-primary: #e2e5ec;
   --text-secondary: #8b92a8;
-  --text-muted: #5a6078;
+  --text-muted: #8b93ad;
   --accent: #3b82f6;
   --accent-hover: #2563eb;
   --accent-glow: rgba(59, 130, 246, 0.15);
@@ -1314,5 +1314,20 @@ html, body {
   .log-panel-wrapper { padding: 0 14px 10px; }
   .main-content > .panel:first-child .form-row {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Accessibilité : focus clavier visible partout, et respect de la réduction
+   des animations demandée par le système. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

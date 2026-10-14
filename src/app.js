@@ -16,6 +16,17 @@ const ICONS = {
   add: `<svg width='16' height='16' viewBox='0 0 24 24' fill='none'><path d='M12.0684 2.03418C12.5654 2.03421 12.9687 2.43755 12.9688 2.93457V11.0996H21.0654C21.5625 11.0996 21.9658 11.503 21.9658 12C21.9658 12.497 21.5625 12.9004 21.0654 12.9004H12.9688V21.0654C12.9687 21.5624 12.5654 21.9658 12.0684 21.9658C11.5713 21.9658 11.168 21.5625 11.168 21.0654V12.9004H2.93457C2.43751 12.9004 2.03418 12.4971 2.03418 12C2.03418 11.5029 2.43751 11.0996 2.93457 11.0996H11.168V2.93457C11.168 2.43753 11.5713 2.03418 12.0684 2.03418Z' fill='currentColor'/></svg>`,
 };
 
+export function compareVersions(a, b) {
+  const pa = String(a || '').trim().replace(/^v/, '').split('.').map(Number);
+  const pb = String(b || '').trim().replace(/^v/, '').split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const x = pa[i] || 0, y = pb[i] || 0;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return 0;
+    if (x !== y) return x < y ? -1 : 1;
+  }
+  return 0;
+}
+
 async function notify(title, body) {
   try {
     if ('Notification' in window && Notification.permission === 'granted') {
@@ -38,7 +49,8 @@ function debounce(fn, ms) {
 }
 
 function sessionHash(s) {
-  return s.status + '|' + (s.total_uploaded_mb || 0).toFixed(2) + '|' + (s.current_upload_speed || 0).toFixed(2) + '|' + (s.ratio || 0).toFixed(2) + '|' + (s.progress_percent || 0).toFixed(2) + '|' + (s.logs ? s.logs.length : 0) + '|' + (s.elapsed_seconds || 0);
+  const num = (v) => { const n = Number(v ?? 0); return Number.isFinite(n) ? n.toFixed(2) : '0.00'; };
+  return s.status + '|' + num(s.total_uploaded_mb) + '|' + num(s.current_upload_speed) + '|' + num(s.ratio) + '|' + num(s.progress_percent) + '|' + (s.logs ? s.logs.length : 0) + '|' + (s.elapsed_seconds || 0);
 }
 
 // Exporte pour les tests (`src/app.test.js`) qui instancient `App`
@@ -74,7 +86,16 @@ export class App {
     // « jamais verifie » trompeur.
     this.updateStatus = '';
     this.updateStatusError = false;
-    this.init();
+    this._refreshing = false;
+    this._deletedIds = new Map();
+    this._eventsInstalled = false;
+    this._offline = false;
+    this._offlineToastShown = false;
+    this.init().catch((e) => {
+      console.error("Échec d'initialisation :", e);
+      const app = document.getElementById('app');
+      if (app) app.innerHTML = '<div style="padding:40px;text-align:center">Échec du démarrage. Relancez l\'application.</div>';
+    });
   }
 
   async init() {
@@ -133,6 +154,18 @@ export class App {
       this.updateStatus = 'Version ' + update.version + ' disponible.';
       this.updateStatusError = false;
 
+      // Garde anti-downgrade : l'endpoint `latest.json` n'est pas signé, seul
+      // l'artefact l'est (`requireSignedVersion` inutilisable ici car nos
+      // signatures ne portent pas la version). Une réponse trafiquée qui
+      // annoncerait une version <= courante est donc refusée explicitement.
+      if (compareVersions(update.version, update.currentVersion) <= 0) {
+        this.updateStatus = 'Version annoncee (' + update.version + ') non postérieure : installation refusée.';
+        this.updateStatusError = true;
+        console.warn('Mise à jour refusée (downgrade ou égal) :', update.version, 'vs', update.currentVersion);
+        if (manual) Toast.error('Version annoncee non postérieure : installation refusée par sécurité.');
+        return;
+      }
+
       const question = 'Nouvelle version ' + update.version + ' disponible (actuelle '
         + update.currentVersion + ').'
         + (update.notes ? '\n\n' + update.notes : '')
@@ -163,22 +196,30 @@ export class App {
       const raw = localStorage.getItem('rsm_persisted_sessions');
       if (raw) {
         const persisted = JSON.parse(raw);
-        if (persisted.sessions && persisted.timestamp) {
+        if (persisted && Array.isArray(persisted.sessions) && typeof persisted.timestamp === 'number') {
           const age = Date.now() - persisted.timestamp;
-          if (age < 24 * 60 * 60 * 1000) {
+          if (age >= 0 && age < 24 * 60 * 60 * 1000) {
             // Les moteurs ne survivent pas à l'application (job « kill on close »
             // + arrêt à la fermeture) : une session restaurée ne peut pas être
             // encore vivante. La restaurer « En cours » créait des fantômes qui
             // tournaient pour toujours et refusaient de se supprimer.
-            this.sessions = persisted.sessions.map(s => ({
-              ...s,
-              status: typeof s.status === 'string' && s.status !== 'stopped' ? 'stopped' : s.status,
-            }));
-            this._lastBackendUpdate = persisted.lastBackendUpdate;
+            this.sessions = persisted.sessions
+              .filter(s => s && typeof s.id === 'string' && s.config && typeof s.config.torrent_path === 'string')
+              .map(s => ({
+                ...s,
+                status: typeof s.status === 'string' && s.status !== 'stopped' ? 'stopped' : s.status,
+              }));
+            const lb = persisted.lastBackendUpdate;
+            this._lastBackendUpdate = (typeof lb === 'string' && !Number.isNaN(Date.parse(lb))) ? lb : null;
+          } else {
+            try { localStorage.removeItem('rsm_persisted_sessions'); } catch (e) {}
           }
+        } else if (persisted) {
+          console.warn('Sessions persistées invalides, purge.');
+          try { localStorage.removeItem('rsm_persisted_sessions'); } catch (e) {}
         }
       }
-    } catch (e) {}
+    } catch (e) { console.warn('Restauration des sessions impossible :', e); }
   }
 
   persistSessions() {
@@ -229,7 +270,9 @@ export class App {
   }
 
   setupLazyCharts() {
-    this._intersectionObserver = new IntersectionObserver((entries) => {
+    if (!('IntersectionObserver' in window)) return;
+    try {
+      this._intersectionObserver = new IntersectionObserver((entries) => {
       entries.forEach(entry => {
         const card = entry.target.closest('.session-card');
         if (!card) return;
@@ -244,10 +287,18 @@ export class App {
         }
       });
     }, { root: document.getElementById('sessions-container'), rootMargin: '100px' });
+    } catch (e) { console.warn('Lazy charts indisponibles :', e); }
+  }
+
+  destroy() {
+    if (this.pollingInterval) { clearInterval(this.pollingInterval); this.pollingInterval = null; }
+    try { this._intersectionObserver?.disconnect(); } catch (e) {}
+    window.removeEventListener('beforeunload', this._persistBound);
   }
 
   render() {
     const app = document.getElementById('app');
+    if (!app) { console.error('#app introuvable, rendu impossible'); return; }
     const isLight = document.documentElement.classList.contains('light');
     app.innerHTML = `
       <header class='app-header'>
@@ -302,7 +353,7 @@ export class App {
           </div>
           <div class='panel-body'>
             <div class='session-search'>
-              <input type='text' class='form-input' id='session-search' placeholder='Rechercher une session...' autocomplete='off'>
+              <input type='text' class='form-input' id='session-search' placeholder='Rechercher une session...' autocomplete='off' aria-label='Rechercher une session'>
             </div>
             <div id='sessions-container'></div>
           </div>
@@ -324,7 +375,7 @@ export class App {
           <div class='drag-overlay-hint'>Fichiers .torrent uniquement</div>
         </div>
       </div>
-      <div class='modal-overlay' id='settings-modal'>
+      <div class='modal-overlay' id='settings-modal' role='dialog' aria-modal='true' aria-label='Parametres'>
         <div class='modal'>
           <div class='modal-header'>
             <div class='modal-title'>Parametres</div>
@@ -339,7 +390,7 @@ export class App {
                 <div class='switch ${isLight ? 'active' : ''}' id='theme-switch'></div>
               </div>
               <div class='form-group'>
-                <label class='form-label'>Client par defaut</label>
+                <label class='form-label' for='setting-client'>Client par defaut</label>
                 <select class='form-select' id='setting-client'>
                   <option value='qbit-4.0.3'>qBittorrent 4.0.3</option>
                   <option value='qbit-4.3.3'>qBittorrent 4.3.3</option>
@@ -347,16 +398,16 @@ export class App {
               </div>
               <div class='form-row'>
                 <div class='form-group'>
-                  <label class='form-label'>Port par defaut</label>
+                  <label class='form-label' for='setting-port'>Port par defaut</label>
                   <input type='text' class='form-input' id='setting-port' value='8999'>
                 </div>
                 <div class='form-group'>
-                  <label class='form-label'>Polling (sec)</label>
+                  <label class='form-label' for='setting-polling'>Polling (sec)</label>
                   <input type='text' class='form-input' id='setting-polling' value='2'>
                 </div>
               </div>
               <div class='form-group'>
-                <label class='form-label'>Alerte ratio cible</label>
+                <label class='form-label' for='setting-ratio-target'>Alerte ratio cible</label>
                 <input type='text' class='form-input' id='setting-ratio-target' value='2.0' placeholder='ex: 2.0'>
               </div>
               <div class='form-group'>
@@ -377,7 +428,7 @@ export class App {
           </div>
         </div>
       </div>
-      <div class='modal-overlay' id='about-modal'>
+      <div class='modal-overlay' id='about-modal' role='dialog' aria-modal='true' aria-label='A propos'>
         <div class='modal'>
           <div class='modal-header'>
             <div class='modal-title'>A propos</div>
@@ -576,14 +627,29 @@ export class App {
       autoRestartSwitch.classList.toggle('active', this.autoRestartEnabled);
     });
     saveBtn?.addEventListener('click', async () => {
-      const port = document.getElementById('setting-port')?.value;
+      const portRaw = (document.getElementById('setting-port')?.value ?? '').trim();
       const client = document.getElementById('setting-client')?.value;
-      const polling = parseFloat(document.getElementById('setting-polling')?.value) || 2;
-      const ratioTarget = parseFloat(document.getElementById('setting-ratio-target')?.value) || 2.0;
+      const pollingRaw = (document.getElementById('setting-polling')?.value ?? '').trim();
+      const ratioRaw = (document.getElementById('setting-ratio-target')?.value ?? '').trim();
+      // Validation explicite avant envoi : les replis silencieux (`|| 8999`)
+      // masquaient les saisies invalides et faisaient rejeter la sauvegarde
+      // en bloc côté backend, avec un toast trompeur.
+      if (!/^\d{1,5}$/.test(portRaw) || Number(portRaw) < 1 || Number(portRaw) > 65535 || String(Number(portRaw)) !== portRaw) {
+        Toast.error('Port invalide (1-65535)');
+        return;
+      }
+      const polling = Number(pollingRaw);
+      if (!Number.isFinite(polling) || polling < 1 || polling > 3600) {
+        Toast.error('Polling invalide (1-3600 s)');
+        return;
+      }
+      const ratioTarget = Number(ratioRaw);
+      if (!Number.isFinite(ratioTarget) || ratioTarget <= 0 || ratioTarget > 1000) {
+        Toast.error('Ratio cible invalide');
+        return;
+      }
       const newSettings = {
-        // `default_port` est un u16 côté Rust : envoyé en chaîne, la
-        // désérialisation échouait et rien n'était persisté.
-        default_port: parseInt(port, 10) || 8999,
+        default_port: Number(portRaw),
         default_client: client,
         polling_interval_sec: polling,
         ratio_target: ratioTarget,
@@ -616,21 +682,30 @@ export class App {
       if (this.customPresets.length === 0) {
         presetsList.innerHTML = '<span style="color: var(--text-muted); font-size: 12px;">Aucun preset personnalise</span>';
       } else {
-        presetsList.innerHTML = this.customPresets.map((p, i) =>
-          '<div style="display: flex; align-items: center; justify-content: space-between; background: var(--bg-tertiary); padding: 8px 12px; border-radius: var(--radius);">' +
-            '<span style="font-size: 12px; font-weight: 500;">' + p.name + '</span>' +
-            '<button class="btn-icon danger" data-preset-idx="' + i + '" style="width: 22px; height: 22px; font-size: 10px;">&#10005;</button>' +
-          '</div>'
-        ).join('');
-        presetsList.querySelectorAll('button[data-preset-idx]').forEach(btn => {
-          btn.addEventListener('click', () => {
-            const idx = parseInt(btn.dataset.presetIdx);
+        presetsList.textContent = '';
+        this.customPresets.forEach((p, i) => {
+          const row = document.createElement('div');
+          row.style.cssText = 'display: flex; align-items: center; justify-content: space-between; background: var(--bg-tertiary); padding: 8px 12px; border-radius: var(--radius);';
+          const label = document.createElement('span');
+          label.style.cssText = 'font-size: 12px; font-weight: 500;';
+          label.textContent = p.name;
+          const del = document.createElement('button');
+          del.className = 'btn-icon danger';
+          del.dataset.presetIdx = String(i);
+          del.style.cssText = 'width: 22px; height: 22px; font-size: 10px;';
+          del.setAttribute('aria-label', 'Supprimer le preset ' + p.name);
+          del.textContent = '✕';
+          del.addEventListener('click', () => {
+            const idx = parseInt(del.dataset.presetIdx, 10);
+            if (!Number.isInteger(idx) || idx < 0 || idx >= this.customPresets.length) return;
             this.customPresets.splice(idx, 1);
             this.saveCustomPresets();
             this.openSettings();
             this.newSessionForm.presets = [...this.presets, ...this.customPresets];
             this.newSessionForm.renderPresets();
           });
+          row.append(label, del);
+          presetsList.append(row);
         });
       }
     }
@@ -751,6 +826,7 @@ export class App {
     try {
       const res = await invoke('launch_session', { req: config });
       if (res.success) {
+        if (typeof res.data === 'string' && res.data) this.sessionConfigs.set(res.data, config);
         Toast.success('Session lancee avec succes');
         await notify('RSM', 'Session lancee : ' + this.getTorrentName(config.torrent_path));
         await this.refreshSessions();
@@ -779,6 +855,8 @@ export class App {
       const res = await invoke('delete_session', { id });
       if (res.success) {
         if (this.selectedSessionId === id) this.selectedSessionId = null;
+        this._deletedIds.set(id, Date.now());
+        this.restartAttempts.delete(id);
         // Retrait immédiat de la carte : sans cela elle resterait affichée
         // jusqu'au prochain rafraîchissement, et un backend qui ne connaît plus
         // la session ne la renverra jamais.
@@ -821,6 +899,8 @@ export class App {
   }
 
   async refreshSessions() {
+    if (this._refreshing) return;
+    this._refreshing = true;
     try {
       let res;
       if (this._lastBackendUpdate) {
@@ -834,24 +914,31 @@ export class App {
       }
       if (res.success) {
         const prevSessions = this.sessions;
-        const newData = res.data;
+        const newData = Array.isArray(res.data) ? res.data : [];
         if (newData.length > 0) {
           // Garder le plus récent des last_update pour ne jamais rater de mise à jour
-          let latest = null;
+          let latest = this._lastBackendUpdate ? Date.parse(this._lastBackendUpdate) || 0 : 0;
           for (const s of newData) {
             const ts = s.last_update ? Date.parse(s.last_update) : 0;
-            if (!latest || ts > latest) latest = ts;
+            if (Number.isFinite(ts) && ts > latest) latest = ts;
           }
-          this._lastBackendUpdate = latest ? new Date(latest).toISOString() : new Date().toISOString();
+          if (latest > 0) this._lastBackendUpdate = new Date(latest).toISOString();
         }
         // Fusion delta : la liste ne renvoie que les sessions modifiées, donc
         // on conserve celles absentes de la réponse. Une session supprimée ne
-        // peut pas ressusciter : handleDelete la retire aussi de this.sessions.
+        // peut pas ressusciter : les ids supprimés sont ignorés 30 s.
+        const now = Date.now();
+        for (const [id, ts] of [...this._deletedIds]) {
+          if (now - ts > 30000) this._deletedIds.delete(id);
+        }
         const merged = new Map(prevSessions.map(s => [s.id, s]));
         for (const s of newData) {
-          merged.set(s.id, s);
+          if (s && typeof s.id === 'string' && !this._deletedIds.has(s.id)) {
+            merged.set(s.id, s);
+          }
         }
         this.sessions = Array.from(merged.values());
+        if (this._offline) { this._offline = false; this._offlineToastShown = false; }
         this.persistSessions();
         this.updateStats();
         this.renderSessions();
@@ -864,15 +951,26 @@ export class App {
              !== (this.sessions.find(s => s.id === this.selectedSessionId)?.logs?.length || 0);
         if (shouldUpdateLog) this.renderLogPanel();
       }
-    } catch (e) { console.error('Failed to refresh sessions:', e); }
+    } catch (e) {
+      console.error('Failed to refresh sessions:', e);
+      if (!this._offlineToastShown) {
+        this._offline = true;
+        this._offlineToastShown = true;
+        Toast.warning('Backend injoignable — réessai automatique…');
+      }
+    } finally {
+      this._refreshing = false;
+    }
   }
 
   checkRatioAlerts() {
-    const target = this.settings?.ratio_target || 2.0;
+    const rawTarget = Number(this.settings?.ratio_target);
+    const target = Number.isFinite(rawTarget) && rawTarget > 0 ? rawTarget : 2.0;
     this.sessions.forEach(s => {
-      if (s.status === 'running' && s.ratio >= target && !this.ratioAlerts.has(s.id)) {
+      const ratio = Number(s.ratio);
+      if (s.status === 'running' && Number.isFinite(ratio) && ratio >= target && !this.ratioAlerts.has(s.id)) {
         this.ratioAlerts.add(s.id);
-        Toast.success('Ratio cible atteint ! ' + this.getTorrentName(s.config?.torrent_path) + ' : ' + s.ratio.toFixed(1));
+        Toast.success('Ratio cible atteint ! ' + this.getTorrentName(s.config?.torrent_path) + ' : ' + ratio.toFixed(1));
         notify('RSM', 'Ratio cible atteint : ' + this.getTorrentName(s.config?.torrent_path));
       }
     });
@@ -891,14 +989,15 @@ export class App {
       const isCrashed = current && current.status === 'error';
       const isMissing = !current;
       if (wasRunning && (isCrashed || isMissing)) {
-        const config = this.sessionConfigs.get(prev.config?.torrent_path);
+        if (this._deletedIds.has(prev.id)) return;
+        const config = this.sessionConfigs.get(prev.id) ?? this.sessionConfigs.get(prev.config?.torrent_path);
         if (config) {
-          const attempts = this.restartAttempts.get(prev.config?.torrent_path) || 0;
+          const attempts = this.restartAttempts.get(prev.id) || 0;
           if (attempts < 3) {
-            this.restartAttempts.set(prev.config?.torrent_path, attempts + 1);
+            this.restartAttempts.set(prev.id, attempts + 1);
             Toast.warning('Redemarrage auto (' + (attempts + 1) + '/3) : ' + this.getTorrentName(prev.config?.torrent_path));
             notify('RSM', 'Redemarrage auto : ' + this.getTorrentName(prev.config?.torrent_path));
-            setTimeout(() => this.handleLaunch(config), 2000);
+            setTimeout(() => { if (!this._deletedIds.has(prev.id)) this.handleLaunch(config); }, 2000 * (attempts + 1));
           } else {
             Toast.error('Arret apres 3 echecs : ' + this.getTorrentName(prev.config?.torrent_path));
             notify('RSM', 'Session arretee apres 3 echecs');
@@ -909,17 +1008,30 @@ export class App {
   }
 
   updateStats() {
+    const statActive = document.getElementById('stat-active');
+    if (!statActive) return;
+    const setStat = (id, value, unit) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = '';
+      el.append(document.createTextNode(value), document.createTextNode(' '));
+      const span = document.createElement('span');
+      span.className = 'stat-unit';
+      span.textContent = unit;
+      el.append(span);
+    };
     const active = this.sessions.filter(s => s.status === 'running').length;
-    const totalUploadMb = this.sessions.reduce((sum, s) => sum + (s.total_uploaded_mb || 0), 0);
-    const totalDownloadMb = this.sessions.reduce((sum, s) => sum + (s.total_downloaded_mb || 0), 0);
+    const totalUploadMb = this.sessions.reduce((sum, s) => sum + (Number(s.total_uploaded_mb) || 0), 0);
+    const totalDownloadMb = this.sessions.reduce((sum, s) => sum + (Number(s.total_downloaded_mb) || 0), 0);
     const { value: upVal, unit: upUnit } = this.formatSizeDynamic(totalUploadMb);
     const { value: dlVal, unit: dlUnit } = this.formatSizeDynamic(totalDownloadMb);
-    const ratios = this.sessions.map(s => s.ratio).filter(r => r > 0);
+    const ratios = this.sessions.map(s => Number(s.ratio)).filter(r => Number.isFinite(r) && r > 0);
     const avgRatio = ratios.length > 0 ? (ratios.reduce((a, b) => a + b, 0) / ratios.length).toFixed(1) : '0.0';
-    document.getElementById('stat-active').textContent = active;
-    document.getElementById('stat-upload').innerHTML = upVal + " <span class='stat-unit'>" + upUnit + '</span>';
-    document.getElementById('stat-download').innerHTML = dlVal + " <span class='stat-unit'>" + dlUnit + '</span>';
-    document.getElementById('stat-ratio').textContent = avgRatio;
+    statActive.textContent = active;
+    setStat('stat-upload', upVal, upUnit);
+    setStat('stat-download', dlVal, dlUnit);
+    const ratioEl = document.getElementById('stat-ratio');
+    if (ratioEl) ratioEl.textContent = avgRatio;
   }
 
   formatSizeDynamic(mb) {
@@ -930,10 +1042,16 @@ export class App {
   }
 
   setupGlobalEvents() {
+    if (this._eventsInstalled) return;
+    this._eventsInstalled = true;
+    this._persistBound = () => this.persistSessions();
+    window.addEventListener('beforeunload', this._persistBound);
     window.addEventListener('beforeunload', (e) => {
       const active = this.sessions.filter(s => s.status === 'running').length;
       if (active > 0) { e.preventDefault(); e.returnValue = ''; }
     });
+    window.addEventListener('online', () => { this._offline = false; this._offlineToastShown = false; this.refreshSessions(); });
+    window.addEventListener('offline', () => { this._offline = true; Toast.warning('Hors ligne — les données affichées peuvent être périmées.'); });
   }
 
   async requestNotificationPermission() {
@@ -1025,12 +1143,22 @@ export class App {
   loadCustomPresets() {
     try {
       const raw = localStorage.getItem('rsm_custom_presets');
-      if (raw) this.customPresets = JSON.parse(raw);
+      if (!raw) { this.customPresets = []; return; }
+      const v = JSON.parse(raw);
+      this.customPresets = Array.isArray(v)
+        ? v.filter(p => p && typeof p.id === 'string' && typeof p.name === 'string' && p.config && typeof p.config === 'object')
+        : [];
+      if (!Array.isArray(v)) console.warn('Presets personnalisés invalides, réinitialisés.');
     } catch (e) { this.customPresets = []; }
   }
 
   saveCustomPresets() {
-    localStorage.setItem('rsm_custom_presets', JSON.stringify(this.customPresets));
+    try {
+      localStorage.setItem('rsm_custom_presets', JSON.stringify(this.customPresets));
+    } catch (e) {
+      console.warn('Stockage des presets plein ou indisponible :', e);
+      Toast.warning('Stockage plein : preset gardé en mémoire seulement.');
+    }
   }
 
   loadTheme() {

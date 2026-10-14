@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use chrono::{DateTime, Local};
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
@@ -181,7 +181,16 @@ impl SessionManager {
                     log_orphan_protection(&sessions, &id_clone, proc.job_warning.as_deref());
 
                     if let Some(pid) = proc.pid() {
-                        pids.insert(id_clone.clone(), pid);
+                        // La session a pu être supprimée pendant le spawn
+                        // (✕ cliqué pendant le démarrage) : insérer un pid
+                        // sans tâche pour le nettoyer laisserait une entrée
+                        // orpheline. On tue dans ce cas le moteur aussitôt.
+                        if sessions.contains_key(&id_clone) {
+                            pids.insert(id_clone.clone(), pid);
+                        } else {
+                            let _ = proc.child.kill().await;
+                            return;
+                        }
                     }
 
                     while let Some(line) = proc.output_rx.recv().await {
@@ -189,16 +198,39 @@ impl SessionManager {
                             let log = parse_log_line(&line);
                             update_stats_from_log(&mut s, &log);
                             push_log(&mut s, log.level, &log.source, &log.message);
+                        } else {
+                            // Session supprimée en cours de lecture : on ne
+                            // jette plus les lignes dans le vide, on casse la
+                            // boucle pour laisser le `Child` se faire dropper
+                            // (`kill_on_drop` tue le moteur).
+                            break;
                         }
                     }
 
-                    let _ = proc.child.wait().await;
+                    let status = match proc.child.wait().await {
+                        Ok(s) => s,
+                        Err(e) => {
+                            eprintln!("attente du moteur : {e}");
+                            pids.remove(&id_clone);
+                            if let Some(mut s) = sessions.get_mut(&id_clone) {
+                                s.status = SessionStatus::Error(format!("attente du moteur : {e}"));
+                                s.last_update = Local::now();
+                            }
+                            return;
+                        }
+                    };
                     // Le moteur a quitté : plus rien à signaler pour cette session.
                     pids.remove(&id_clone);
                     if let Some(mut s) = sessions.get_mut(&id_clone) {
-                        s.status = SessionStatus::Stopped;
-                        s.last_update = Local::now();
-                        push_log(&mut s, LogLevel::Info, "manager", "Moteur arrêté");
+                        if status.success() {
+                            s.status = SessionStatus::Stopped;
+                            s.last_update = Local::now();
+                            push_log(&mut s, LogLevel::Info, "manager", "Moteur arrêté");
+                        } else {
+                            s.status = SessionStatus::Error(format!("moteur sorti avec le code {status}"));
+                            s.last_update = Local::now();
+                            push_log(&mut s, LogLevel::Error, "manager", &format!("Le moteur a quitté en erreur ({status}) — vérifiez le torrent et les vitesses"));
+                        }
                     }
                 }
                 Err(e) => {
@@ -359,21 +391,29 @@ impl SessionManager {
     /// Sans cela, quitter la fenêtre laissait les moteurs orphelins continuer à
     /// annoncer au tracker jusqu'à la mort de la machine. Le délai de grâce
     /// borne l'attente : les moteurs qui n'ont pas répondu sont tués, et leur
-    /// nombre est renvoyé pour information.
+    /// nombre est renvoyé pour information. Les échecs sont journalisés sur
+    /// `stderr` (visible en dev ; en release Windows l'UI affiche le compte).
     pub async fn shutdown(&self, grace: Duration) -> usize {
-        let ids: Vec<String> = self.pids.iter().map(|entry| entry.key().clone()).collect();
-        for id in &ids {
-            if let Err(e) = self.stop_session(id) {
-                eprintln!("arrêt de la session {id} impossible : {e}");
-            }
-        }
-
+        // Re-snapshot en boucle : une session créée pendant la grâce ne doit
+        // pas être oubliée (orphelin Unix garanti sinon).
         let deadline = tokio::time::Instant::now() + grace;
-        while tokio::time::Instant::now() < deadline {
+        loop {
+            let ids: Vec<String> = self.pids.iter().map(|entry| entry.key().clone()).collect();
+            if ids.is_empty() {
+                return 0;
+            }
+            for id in &ids {
+                if let Err(e) = self.stop_session(id) {
+                    eprintln!("arrêt de la session {id} impossible : {e}");
+                }
+            }
+            if tokio::time::Instant::now() >= deadline {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
             if self.pids.is_empty() {
                 return 0;
             }
-            tokio::time::sleep(Duration::from_millis(50)).await;
         }
 
         let leftovers: Vec<(String, u32)> = self
@@ -383,8 +423,20 @@ impl SessionManager {
             .collect();
         let mut killed = 0;
         for (id, pid) in leftovers {
-            if force_kill(pid).is_ok() {
-                killed += 1;
+            // Ne tuer que si la session est toujours en cours d'arrêt : le pid
+            // a pu être réutilisé par l'OS entre-temps.
+            let still_stopping = self
+                .sessions
+                .get(&id)
+                .map(|s| s.status == SessionStatus::Stopping)
+                .unwrap_or(false);
+            if !still_stopping {
+                self.pids.remove(&id);
+                continue;
+            }
+            match force_kill(pid) {
+                Ok(()) => killed += 1,
+                Err(e) => eprintln!("échec du kill forcé de {id} (pid {pid}) : {e}"),
             }
             self.pids.remove(&id);
         }
@@ -392,19 +444,41 @@ impl SessionManager {
     }
 
     pub fn pause_session(&self, id: &str) -> Result<()> {
-        if let Some(mut s) = self.sessions.get_mut(id) {
-            s.status = SessionStatus::Paused;
-            s.last_update = Local::now();
+        let mut s = self
+            .sessions
+            .get_mut(id)
+            .ok_or_else(|| anyhow!("session inconnue : {id}"))?;
+        match &s.status {
+            SessionStatus::Running => {
+                s.status = SessionStatus::Paused;
+                s.last_update = Local::now();
+                Ok(())
+            }
+            SessionStatus::Paused => Ok(()),
+            // `pause` ne signale jamais le moteur : le passer sur une session
+            // sans processus (ou en cours d'arrêt) fabriquerait un état
+            // mensonger. Les états terminaux sont donc refusés explicitement.
+            other => bail!("pause impossible depuis l'état {other:?}"),
         }
-        Ok(())
     }
 
     pub fn resume_session(&self, id: &str) -> Result<()> {
-        if let Some(mut s) = self.sessions.get_mut(id) {
-            s.status = SessionStatus::Running;
-            s.last_update = Local::now();
+        let mut s = self
+            .sessions
+            .get_mut(id)
+            .ok_or_else(|| anyhow!("session inconnue : {id}"))?;
+        match &s.status {
+            SessionStatus::Paused => {
+                s.status = SessionStatus::Running;
+                s.last_update = Local::now();
+                Ok(())
+            }
+            SessionStatus::Running => Ok(()),
+            // Reprendre une session arrêtée ou en erreur sans processus
+            // recréait un `Running` fantôme dont l'estimateur fabriquait de
+            // l'upload linéaire indéfiniment. Interdit.
+            other => bail!("reprise impossible depuis l'état {other:?}"),
         }
-        Ok(())
     }
 
     /// Renvoie toutes les sessions avec seulement les N derniers logs (pas de clone massif)
@@ -631,13 +705,19 @@ fn update_stats_from_log(state: &mut SessionState, log: &LogEntry) {
 /// sans unité est refusée : le moteur la rejetterait aussi.
 fn parse_speed_config(val: &str) -> Result<f64> {
     let val = val.to_lowercase().replace(',', ".").replace(' ', "");
-    if let Some(num) = val.strip_suffix("mbps") {
-        Ok(num.parse::<f64>()? * 1024.0 * 1024.0)
-    } else if let Some(num) = val.strip_suffix("kbps") {
-        Ok(num.parse::<f64>()? * 1024.0)
-    } else {
-        Err(anyhow!("vitesse sans unité kbps/mbps : « {} »", val))
+    if val.len() > 32 {
+        bail!("vitesse trop longue : « {} »", val);
     }
+    let num_str: &str = match val.strip_suffix("mbps").or_else(|| val.strip_suffix("kbps")) {
+        Some(num) => num,
+        None => bail!("vitesse sans unité kbps/mbps : « {} »", val),
+    };
+    let v: f64 = num_str.parse().map_err(|_| anyhow!("vitesse invalide : « {} »", val))?;
+    if !v.is_finite() || !(0.0..=1e9).contains(&v) {
+        bail!("vitesse hors bornes : « {} »", val);
+    }
+    let mult = if val.ends_with("mbps") { 1024.0 * 1024.0 } else { 1024.0 };
+    Ok(v * mult)
 }
 
 /// Analyse « <nombre><unité> » juste après un mot-clé — sans espace entre les
@@ -707,19 +787,24 @@ fn parse_percent_after(msg_lower: &str, keyword: &str) -> Option<f64> {
 }
 
 fn extract_first_number(s: &str) -> Option<&str> {
-    let chars: Vec<char> = s.chars().collect();
+    // Travaille sur les octets : on ne cherche que des chiffres ASCII, donc
+    // les indices d'octets sont toujours des frontières de caractères. La
+    // version précédente collectait des `char` mais slicait des octets —
+    // tout contenu UTF-8 multi-octets avant le nombre paniquait
+    // (« byte index is not a char boundary ») et tuait la tâche de lecture.
+    let b = s.as_bytes();
     let mut start = 0;
-    while start < chars.len() && !chars[start].is_ascii_digit() && chars[start] != '.' && chars[start] != '-' {
+    while start < b.len() && !b[start].is_ascii_digit() && b[start] != b'.' && b[start] != b'-' {
         start += 1;
     }
-    if start >= chars.len() { return None; }
+    if start >= b.len() { return None; }
     let mut end = start;
     let mut dot_count = 0;
-    while end < chars.len() {
-        let c = chars[end];
+    while end < b.len() {
+        let c = b[end];
         if c.is_ascii_digit() {
             end += 1;
-        } else if c == '.' && dot_count == 0 {
+        } else if c == b'.' && dot_count == 0 {
             dot_count += 1;
             end += 1;
         } else {
@@ -934,5 +1019,49 @@ mod tests {
         manager
             .stop_session("inconnue")
             .expect("arrêter une session que le backend ignore doit réussir");
+    }
+
+    /// `extract_first_number` ne doit jamais paniquer sur de l'UTF-8
+    /// multi-octets : l'ancienne version comptait des `char` mais slicait des
+    /// octets (« byte index is not a char boundary »), tuant la tâche de
+    /// lecture et bloquant la session en `Running`.
+    #[test]
+    fn extract_first_number_survives_multibyte_utf8() {
+        assert_eq!(extract_first_number("é…12"), Some("12"));
+        assert_eq!(extract_first_number("日本語 3.5MiB"), Some("3.5"));
+        assert_eq!(extract_first_number("téléchargé: 800.00MiB"), Some("800.00"));
+        assert_eq!(extract_first_number("sans chiffre"), None);
+    }
+
+    /// `parse_speed_config` refuse `NaN`, l'infini et le négatif : ces valeurs
+    /// empoisonnaient le JSON (`null` à la place des nombres) et les graphiques.
+    #[test]
+    fn parse_speed_config_rejects_nan_inf_and_negative() {
+        assert!(parse_speed_config("nanmbps").is_err());
+        assert!(parse_speed_config("infmbps").is_err());
+        assert!(parse_speed_config("-5mbps").is_err());
+        assert!(parse_speed_config("9999999999mbps").is_err());
+        assert!(parse_speed_config("5 MBPS").is_ok());
+    }
+
+    /// `pause`/`resume` forment une machine d'états stricte : reprendre une
+    /// session arrêtée ou en erreur recréait un `Running` fantôme dont
+    /// l'estimateur fabriquait de l'upload linéaire indéfiniment.
+    #[test]
+    fn pause_resume_reject_terminal_states() {
+        let manager = SessionManager::new();
+        manager.sessions.insert("s1".to_string(), session_with_id("s1"));
+        manager.pause_session("s1").expect("pause depuis Running");
+        manager.pause_session("s1").expect("re-pause idempotente");
+        manager.resume_session("s1").expect("reprise depuis Paused");
+
+        {
+            let mut s = manager.sessions.get_mut("s1").unwrap();
+            s.status = SessionStatus::Stopped;
+        }
+        assert!(manager.resume_session("s1").is_err(), "reprise depuis Stopped interdite");
+        assert!(manager.pause_session("s1").is_err(), "pause depuis Stopped interdite");
+        assert!(manager.pause_session("nope").is_err(), "pause d'une inconnue");
+        assert!(manager.resume_session("nope").is_err(), "reprise d'une inconnue");
     }
 }

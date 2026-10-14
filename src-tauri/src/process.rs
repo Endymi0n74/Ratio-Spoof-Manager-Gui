@@ -221,6 +221,7 @@ mod win {
     extern "system" {
         fn AttachConsole(process_id: u32) -> i32;
         fn FreeConsole() -> i32;
+        fn GetConsoleWindow() -> *mut c_void;
         fn GenerateConsoleCtrlEvent(ctrl_event: u32, process_group_id: u32) -> i32;
         fn OpenProcess(desired_access: u32, inherit_handle: i32, process_id: u32) -> *mut c_void;
         fn TerminateProcess(process: *mut c_void, exit_code: u32) -> i32;
@@ -251,7 +252,16 @@ mod win {
     /// par accès refusé et il faut d'abord s'en détacher.
     pub fn send_ctrl_break(pid: u32) -> io::Result<()> {
         unsafe {
+            // Si l'application a déjà sa propre console (lancée depuis un
+            // terminal), on la garde : s'en détacher puis ne pas la restaurer
+            // laisserait l'app sans console et les `eprintln!` suivants perdus.
+            let had_console = !GetConsoleWindow().is_null();
             if AttachConsole(pid) == 0 {
+                if had_console {
+                    // Pas de détachement sauvage : on ne peut pas atteindre le
+                    // moteur sans quitter notre console, on échoue proprement.
+                    return Err(io::Error::last_os_error());
+                }
                 FreeConsole();
                 if AttachConsole(pid) == 0 {
                     return Err(io::Error::last_os_error());
@@ -263,6 +273,11 @@ mod win {
             // On ressort de la console du moteur : l'application n'a rien à y faire
             // et ne doit pas y rester attachée.
             FreeConsole();
+            if had_console {
+                // Restaure notre console d'origine.
+                const ATTACH_PARENT_PROCESS: u32 = 0xFFFF_FFFF;
+                AttachConsole(ATTACH_PARENT_PROCESS);
+            }
 
             if sent == 0 {
                 return Err(error);
@@ -407,7 +422,9 @@ mod unix {
     /// Signale tout le groupe du moteur : il en est le chef (voir `spawn`), donc
     /// un pid négatif l'atteint lui et ses éventuels enfants.
     pub fn signal_group(pid: u32, signal: i32) -> io::Result<()> {
-        if unsafe { kill(-(pid as i32), signal) } == 0 {
+        let pid_i32 = i32::try_from(pid)
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, format!("pid hors bornes : {pid}")))?;
+        if unsafe { kill(-pid_i32, signal) } == 0 {
             Ok(())
         } else {
             Err(io::Error::last_os_error())
@@ -422,9 +439,14 @@ pub const ENGINE_NAME: &str = "ratio-spoof";
 const ENGINE_PREFIX: &str = "ratio-spoof-";
 
 /// Le front envoie un nom nu (ex. « ratio-spoof ») quand l'utilisateur choisit
-/// le moteur embarqué ; tout ce qui contient un séparateur est un chemin.
+/// le moteur embarqué ; tout ce qui contient un séparateur, un deux-points
+/// (lecteur Windows, flux ADS) ou un NUL est un chemin — ou invalide.
 fn is_bare_name(requested: &str) -> bool {
-    !requested.is_empty() && !requested.contains('/') && !requested.contains('\\')
+    !requested.is_empty()
+        && !requested.contains('/')
+        && !requested.contains('\\')
+        && !requested.contains(':')
+        && !requested.contains('\0')
 }
 
 /// Dossiers pouvant contenir le sidecar, du plus probable au moins probable.
@@ -443,9 +465,11 @@ fn engine_search_dirs() -> Vec<PathBuf> {
         }
     }
 
-    // Développement : le sidecar est dans le dépôt, à côté du crate.
+    // Développement : le sidecar est dans le dépôt, à côté du crate (chemin
+    // absolu figé à la compilation). Le chemin relatif `src-tauri/binaries`
+    // a été retiré : résolu depuis le CWD, il permettait à un dossier
+    // attaquable de fournir un faux sidecar.
     dirs.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("binaries"));
-    dirs.push(PathBuf::from("src-tauri").join("binaries"));
 
     dirs
 }
@@ -461,6 +485,9 @@ fn find_engine_in(dir: &Path) -> Option<PathBuf> {
     }
 
     let mut matches: Vec<PathBuf> = std::fs::read_dir(dir)
+        .map_err(|e| {
+            eprintln!("lecture impossible du dossier moteur {} : {e}", dir.display());
+        })
         .ok()?
         .filter_map(|entry| entry.ok())
         .map(|entry| entry.path())
@@ -580,6 +607,26 @@ mod tests {
         assert!(!is_bare_name(r"C:\tools\ratio-spoof.exe"));
         assert!(!is_bare_name("./ratio-spoof"));
         assert!(!is_bare_name(""));
+        // `C:foo`, flux ADS et NUL ne sont pas des noms nus : sans cela,
+        // `C:foo` était cherché dans le bundle au lieu d'être refusé.
+        assert!(!is_bare_name("C:ratio-spoof"));
+        assert!(!is_bare_name("ratio-spoof:evil"));
+    }
+
+    #[test]
+    fn engine_search_ignores_relative_cwd_dir() {
+        // Le dossier relatif `src-tauri/binaries` a été retiré : résolu depuis
+        // le CWD, il permettait à un dossier attaquable de fournir un faux
+        // sidecar. Seul le chemin absolu du crate subsiste.
+        let dirs = engine_search_dirs();
+        assert!(
+            !dirs.iter().any(|d| *d == PathBuf::from("src-tauri").join("binaries")),
+            "aucun dossier relatif au CWD ne doit être cherché : {dirs:?}"
+        );
+        assert!(
+            dirs.iter().any(|d| d.ends_with("src-tauri/binaries") && d.is_absolute()),
+            "le dossier absolu du crate doit subsister : {dirs:?}"
+        );
     }
 
     #[test]

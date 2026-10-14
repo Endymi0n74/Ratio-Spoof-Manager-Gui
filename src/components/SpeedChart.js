@@ -13,7 +13,9 @@ export class SpeedChart {
     this.canvas = document.createElement('canvas');
     this.canvas.className = 'speed-chart';
     this.canvas.height = this.height;
-    this.ctx = this.canvas.getContext('2d');
+    try {
+      this.ctx = this.canvas.getContext('2d');
+    } catch (e) { this.ctx = null; }
     this.container.appendChild(this.canvas);
     this.resize();
   }
@@ -33,8 +35,10 @@ export class SpeedChart {
 
   draw() {
     const ctx = this.ctx;
+    if (!ctx) return;
     const w = this._cssWidth;
     const h = this.height;
+    if (!(w > 0) || !(h > 0)) return;
     const dpr = window.devicePixelRatio || 1;
 
     // La taille physique reste constante : réassigner canvas.width réinitialise aussi le transform

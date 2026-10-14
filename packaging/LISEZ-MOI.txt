@@ -12,8 +12,9 @@ Utilisation
 1. Décompressez le dossier en entier.
 2. Lancez ratio-spoof-manager.exe.
 
-Ne séparez pas l'exécutable de son sous-dossier binaries\ : c'est là que
-l'application cherche le moteur. Si le moteur est introuvable (par exemple après
+Ne séparez pas l'exécutable de son sous-dossier binaries\ : l'application
+cherche le moteur d'abord à côté de son exécutable, puis dans binaries\.
+Si le moteur est introuvable (par exemple après
 avoir déplacé l'exécutable seul), le formulaire de session accepte un chemin
 explicite via « Chemin personnalisé ».
 
@@ -40,7 +41,7 @@ Au démarrage, l'application vérifie s'il existe une version plus récente
 et propose l'installation : l'installateur NSIS est téléchargé, sa signature
 est vérifiée contre la clé publique du binaire, puis il s'exécute en mode
 silencieux et l'application redémarre. Une vérification manuelle est
-disponible dans « Paramètres ».
+disponible dans la fenêtre « A propos » (bouton « Vérifier une mise à jour »).
 
 En paquet portable, accepter installe la nouvelle version (l'installateur
 crée une copie installée) ; refuser laisse ce paquet tel quel — la question

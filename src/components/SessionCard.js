@@ -1,4 +1,5 @@
 import { SpeedChart } from './SpeedChart.js';
+import { escapeHtml, escapeAttr } from './escape.js';
 
 export class SessionCard {
   constructor(session, options) {
@@ -31,9 +32,13 @@ export class SessionCard {
     const card = document.createElement('div');
     card.className = 'session-card';
     card.dataset.sessionId = s.id;
+    card.tabIndex = 0;
+    card.setAttribute('role', 'button');
+    card.setAttribute('aria-label', 'Session ' + this.getTorrentName(s.config?.torrent_path));
     if (this.isSelected) card.classList.add('selected');
 
     card.innerHTML = this.renderHTML(s);
+    this.element = card;
 
     if (!this.lazyChart) {
       this.initChart(s);
@@ -43,7 +48,8 @@ export class SessionCard {
   }
 
   initChart(s) {
-    const chartContainer = this.element.querySelector('.session-chart');
+    const root = this.element ?? null;
+    const chartContainer = root?.querySelector('.session-chart');
     if (chartContainer && !this.chart) {
       this.chart = new SpeedChart(chartContainer, { height: 50, color: '#22c55e' });
       this.pushSpeed(s.current_upload_speed ?? s.upload_speed ?? s.speed ?? 0);
@@ -53,20 +59,24 @@ export class SessionCard {
   renderHTML(s) {
     const statusClass = this.getStatusClass(s.status);
     const statusText = this.getStatusText(s.status);
-    const uploadedMb = s.total_uploaded_mb ?? s.uploaded_mb ?? s.uploaded ?? 0;
-    const uploadSpeed = s.current_upload_speed ?? s.upload_speed ?? s.speed ?? 0;
-    const downloadedMb = s.total_downloaded_mb ?? s.downloaded_mb ?? s.downloaded ?? 1;
-    const ratio = s.ratio ?? (downloadedMb > 0 ? uploadedMb / downloadedMb : 0);
-    const progress = s.progress_percent ?? s.progress ?? s.downloaded_percent ?? 0;
-    const elapsed = s.elapsed_seconds ?? s.elapsed ?? s.uptime ?? 0;
+    const uploadedMb = Number(s.total_uploaded_mb ?? s.uploaded_mb ?? s.uploaded ?? 0) || 0;
+    const uploadSpeed = Number(s.current_upload_speed ?? s.upload_speed ?? s.speed ?? 0) || 0;
+    const downloadedMb = Number(s.total_downloaded_mb ?? s.downloaded_mb ?? s.downloaded ?? 1) || 1;
+    const rawRatio = Number(s.ratio ?? (downloadedMb > 0 ? uploadedMb / downloadedMb : 0)) || 0;
+    const ratio = Number.isFinite(rawRatio) ? rawRatio : 0;
+    const progress = Number(s.progress_percent ?? s.progress ?? s.downloaded_percent ?? 0) || 0;
+    const elapsed = Number(s.elapsed_seconds ?? s.elapsed ?? s.uptime ?? 0) || 0;
+    const torrentPath = s.config?.torrent_path || '';
+    const client = s.config?.client || '?';
+    const port = s.config?.port ?? '?';
 
     return `
       <div class="session-card-header">
         <div class="session-card-info">
           <div class="session-status-dot ${statusClass}"></div>
           <div>
-            <div class="session-name" title="${s.config?.torrent_path || ''}">${this.getTorrentName(s.config?.torrent_path)}</div>
-            <div class="session-meta">${s.config?.client || '?'} &middot; port ${s.config?.port || '?'} &middot; ${statusText}</div>
+            <div class="session-name" title="${escapeAttr(torrentPath)}">${escapeHtml(this.getTorrentName(torrentPath))}</div>
+            <div class="session-meta">${escapeHtml(client)} &middot; port ${escapeHtml(String(port))} &middot; ${escapeHtml(statusText)}</div>
           </div>
         </div>
         <div class="session-actions">
@@ -85,7 +95,7 @@ export class SessionCard {
         </div>
         <div class="session-metric">
           <div class="session-metric-label">Ratio</div>
-          <div class="session-metric-value" data-stat="ratio">${ratio.toFixed(1)}</div>
+          <div class="session-metric-value" data-stat="ratio">${Number.isFinite(ratio) ? ratio.toFixed(1) : '—'}</div>
         </div>
         <div class="session-metric">
           <div class="session-metric-label">Temps</div>
@@ -106,6 +116,12 @@ export class SessionCard {
   attachCardEvents() {
     this.element.addEventListener('click', (e) => {
       if (!e.target.closest('.session-actions') && !e.target.closest('button')) {
+        this.onSelect?.(this.session.id);
+      }
+    });
+    this.element.addEventListener('keydown', (e) => {
+      if ((e.key === 'Enter' || e.key === ' ') && !e.target.closest('button')) {
+        e.preventDefault();
         this.onSelect?.(this.session.id);
       }
     });
@@ -143,12 +159,13 @@ export class SessionCard {
     this.session = session;
     const s = session;
 
-    const uploadedMb = s.total_uploaded_mb ?? s.uploaded_mb ?? s.uploaded ?? 0;
-    const uploadSpeed = s.current_upload_speed ?? s.upload_speed ?? s.speed ?? 0;
-    const downloadedMb = s.total_downloaded_mb ?? s.downloaded_mb ?? s.downloaded ?? 1;
-    const ratio = s.ratio ?? (downloadedMb > 0 ? uploadedMb / downloadedMb : 0);
-    const progress = s.progress_percent ?? s.progress ?? s.downloaded_percent ?? 0;
-    const elapsed = s.elapsed_seconds ?? s.elapsed ?? s.uptime ?? 0;
+    const uploadedMb = Number(s.total_uploaded_mb ?? s.uploaded_mb ?? s.uploaded ?? 0) || 0;
+    const uploadSpeed = Number(s.current_upload_speed ?? s.upload_speed ?? s.speed ?? 0) || 0;
+    const downloadedMb = Number(s.total_downloaded_mb ?? s.downloaded_mb ?? s.downloaded ?? 1) || 1;
+    const rawRatio = Number(s.ratio ?? (downloadedMb > 0 ? uploadedMb / downloadedMb : 0)) || 0;
+    const ratio = Number.isFinite(rawRatio) ? rawRatio : 0;
+    const progress = Number(s.progress_percent ?? s.progress ?? s.downloaded_percent ?? 0) || 0;
+    const elapsed = Number(s.elapsed_seconds ?? s.elapsed ?? s.uptime ?? 0) || 0;
 
     if (this._lastStatus !== s.status) {
       this._lastStatus = s.status;
@@ -156,7 +173,10 @@ export class SessionCard {
       if (dot) dot.className = 'session-status-dot ' + this.getStatusClass(s.status);
 
       const meta = this.element.querySelector('.session-meta');
-      if (meta) meta.innerHTML = (s.config?.client || '?') + ' &middot; port ' + (s.config?.port || '?') + ' &middot; ' + this.getStatusText(s.status);
+      if (meta) {
+        meta.textContent = '';
+        meta.append(document.createTextNode(s.config?.client || '?'), document.createTextNode(' · port '), document.createTextNode(String(s.config?.port ?? '?')), document.createTextNode(' · '), document.createTextNode(this.getStatusText(s.status)));
+      }
 
       const actions = this.element.querySelector('.session-actions');
       if (actions) {
@@ -183,7 +203,7 @@ export class SessionCard {
     if (this._lastRatio !== ratio) {
       this._lastRatio = ratio;
       const ratioEl = this.element.querySelector('[data-stat="ratio"]');
-      if (ratioEl) ratioEl.textContent = ratio.toFixed(1);
+      if (ratioEl) ratioEl.textContent = Number.isFinite(ratio) ? ratio.toFixed(1) : '—';
     }
 
     if (this._lastProgress !== progress) {
@@ -232,17 +252,17 @@ export class SessionCard {
       return '';
     } else if (status === 'running') {
       return `
-        <button class="btn-icon btn-pause" title="Pause">${this.icons.pause || '&#10074;&#10074;'}</button>
-        <button class="btn-icon danger btn-stop" title="Arreter">${this.icons.stop || '&#9632;'}</button>
+        <button class="btn-icon btn-pause" title="Pause" aria-label="Pause">${this.icons.pause || '&#10074;&#10074;'}</button>
+        <button class="btn-icon danger btn-stop" title="Arreter" aria-label="Arrêter">${this.icons.stop || '&#9632;'}</button>
       `;
     } else if (status === 'paused') {
       return `
-        <button class="btn-icon btn-resume" title="Reprendre">${this.icons.play || '&#9654;'}</button>
-        <button class="btn-icon danger btn-stop" title="Arreter">${this.icons.stop || '&#9632;'}</button>
+        <button class="btn-icon btn-resume" title="Reprendre" aria-label="Reprendre">${this.icons.play || '&#9654;'}</button>
+        <button class="btn-icon danger btn-stop" title="Arreter" aria-label="Arrêter">${this.icons.stop || '&#9632;'}</button>
       `;
     } else {
       return `
-        <button class="btn-icon danger btn-delete" title="Supprimer">&#10005;</button>
+        <button class="btn-icon danger btn-delete" title="Supprimer" aria-label="Supprimer">&#10005;</button>
       `;
     }
   }
@@ -256,15 +276,18 @@ export class SessionCard {
   }
 
   formatSize(mb) {
-    if (mb >= 1024) return (mb / 1024).toFixed(1) + ' GB';
-    if (mb >= 1) return mb.toFixed(0) + ' MB';
-    return (mb * 1024).toFixed(0) + ' KB';
+    const v = Number(mb) || 0;
+    if (!Number.isFinite(v) || v < 0) return '—';
+    if (v >= 1024) return (v / 1024).toFixed(1) + ' GB';
+    if (v >= 1) return v.toFixed(0) + ' MB';
+    return (v * 1024).toFixed(0) + ' KB';
   }
 
   formatSpeed(kbps) {
-    if (kbps >= 1000) return (kbps / 1000).toFixed(1) + ' MB/s';
-    if (kbps > 0) return kbps.toFixed(0) + ' KB/s';
-    return '—';
+    const v = Number(kbps) || 0;
+    if (!Number.isFinite(v) || v <= 0) return '—';
+    if (v >= 1000) return (v / 1000).toFixed(1) + ' MB/s';
+    return v.toFixed(0) + ' KB/s';
   }
 
   formatTime(seconds) {

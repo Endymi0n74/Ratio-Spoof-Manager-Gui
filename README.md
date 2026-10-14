@@ -6,7 +6,7 @@
 
 **🇫🇷 Français** · [🇬🇧 English](README.en.md)
 
-Interface desktop moderne pour [ratio-spoof](https://github.com/ap-pauloafonso/ratio-spoof), le spoofeur de ratio Real-Debrid. Application **Tauri 2** : backend Rust, frontend HTML/CSS/JS (Vite), rendu WebView2 accéléré GPU.
+Interface desktop moderne pour [ratio-spoof](https://github.com/ap-pauloafonso/ratio-spoof) (dépôt d'origine, historique), le spoofeur de ratio Real-Debrid. Application **Tauri 2** : backend Rust, frontend HTML/CSS/JS (Vite), rendu WebView2 accéléré GPU.
 
 Le moteur Go n'est **pas** embarqué : il est téléchargé au build depuis la release du dépôt dédié [Endymi0n74/ratio-spoof](https://github.com/Endymi0n74/ratio-spoof), seule source de vérité du sidecar (voir [Moteur & sidecar](#moteur--sidecar)).
 
@@ -19,7 +19,7 @@ Le moteur Go n'est **pas** embarqué : il est téléchargé au build depuis la r
 - **Logs colorés** : parsing intelligent des sorties du moteur Go
 - **Stats globales** : upload total, ratio moyen, sessions actives
 - **Mises à jour automatiques** : vérification au démarrage, artefact signé puis redémarrage (voir [Mises à jour](#mises-à-jour))
-- **Traçabilité de livraison** : fenêtre *A propos* — version et commit git figés dans le binaire à la compilation
+- **Traçabilité de livraison** : fenêtre *A propos* — version figée dans le binaire à la compilation (le commit git a été retiré en 2.0.9, voir `src-tauri/build.rs`)
 
 ## Installation
 
@@ -45,7 +45,7 @@ sha256sum -c SHA256SUMS.txt
 
 ## Mises à jour
 
-L'application vérifie la release la plus récente au démarrage (vérification manuelle dans *Paramètres → Verifier une mise a jour*). Si une version plus récente existe, elle annonce la version et propose l'installation.
+L'application vérifie la release la plus récente au démarrage (vérification manuelle dans *A propos → Verifier une mise a jour*, résultat affiché sous le bouton). Si une version plus récente existe, elle annonce la version et propose l'installation.
 
 Le contrôle lit l'asset `latest.json` de la release ; l'installateur téléchargé est **vérifié par signature** contre la clé publique figée dans le binaire avant toute exécution — un artefact altéré est refusé. L'application redémarre d'elle-même après installation.
 
@@ -63,10 +63,10 @@ Un guide illustré complet est fourni dans [GUIDE.html](GUIDE.html) (ouvre-le da
 
 ## Développement
 
-Prérequis : [Node.js](https://nodejs.org/) 18+, [Rust](https://rustup.rs/) (MSRV 1.90), et les outils de build Windows (Visual Studio C++ Build Tools, NSIS pour les installateurs).
+Prérequis : [Node.js](https://nodejs.org/) 20 LTS (22 supporté), [Rust](https://rustup.rs/) (MSRV 1.90), et les outils de build Windows (Visual Studio C++ Build Tools, NSIS pour les installateurs).
 
 ```bash
-npm install               # dépendances frontend
+npm ci                    # dépendances frontend (reproductible ; `npm install` peut faire flotter)
 npm run engine:fetch      # télécharge le moteur Go (empreinte SHA-256 vérifiée)
 npm run tauri:dev         # application en mode développement
 

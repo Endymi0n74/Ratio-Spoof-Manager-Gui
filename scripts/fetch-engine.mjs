@@ -55,7 +55,7 @@ Options :
   --force            Retélécharge et réinstalle même si l'empreinte correspond déjà
   --check            Vérifie le sidecar installé sans rien télécharger (code 1 si absent)
   --offline          N'accède pas au réseau : échoue si le sidecar doit être téléchargé
-  --update-lock      Ré-épingle dans engine.lock.json l'empreinte du binaire installé
+  --update-lock      Ré-épingle dans engine.lock.json l'empreinte du binaire installé (exige --force, interdit en CI)
   --print-target      Affiche le target triple résolu puis quitte
   -h, --help         Affiche cette aide
 
@@ -118,28 +118,59 @@ function sha256File(path) {
 }
 
 async function downloadAsset(url, tmpPath) {
-  const response = await fetch(url, {
-    redirect: "follow",
-    headers: { "user-agent": "ratio-spoof-manager/fetch-engine" },
-  });
-  if (!response.ok || !response.body) {
-    throw new Error(
-      `Téléchargement impossible (${response.status} ${response.statusText}) : ${url}\n` +
-        `  L'asset existe-t-il bien sur ce tag ? Vérifiez la release du dépôt moteur.`,
-    );
-  }
-  const hash = createHash("sha256");
-  await pipeline(
-    Readable.fromWeb(response.body),
-    async function* (source) {
-      for await (const chunk of source) {
-        hash.update(chunk);
-        yield chunk;
+  // Timeout + retry : ce script tourne dans `beforeDevCommand` /
+  // `beforeBuildCommand`, donc tout build dépend du réseau. Sans cela, un
+  // incident réseau transitoire casse le build au lieu d'être réessayé.
+  const expectedLength = { value: -1 };
+  let lastError;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const response = await fetch(url, {
+        redirect: "follow",
+        headers: { "user-agent": "ratio-spoof-manager/fetch-engine" },
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (response.status === 429 || (response.status >= 500 && response.status < 600)) {
+        throw new Error(`réponse ${response.status} ${response.statusText}, nouvel essai`);
       }
-    },
-    createWriteStream(tmpPath),
-  );
-  return hash.digest("hex");
+      if (!response.ok || !response.body) {
+        throw new Error(
+          `Téléchargement impossible (${response.status} ${response.statusText}) : ${url}\n` +
+            `  L'asset existe-t-il bien sur ce tag ? Vérifiez la release du dépôt moteur.`,
+        );
+      }
+      const declared = Number(response.headers.get("content-length"));
+      if (Number.isFinite(declared) && declared >= 0) expectedLength.value = declared;
+      const hash = createHash("sha256");
+      let written = 0;
+      await pipeline(
+        Readable.fromWeb(response.body),
+        async function* (source) {
+          for await (const chunk of source) {
+            hash.update(chunk);
+            written += chunk.length;
+            yield chunk;
+          }
+        },
+        createWriteStream(tmpPath),
+      );
+      if (expectedLength.value >= 0 && written !== expectedLength.value) {
+        throw new Error(
+          `Téléchargement tronqué : ${written} o reçus pour ${expectedLength.value} o annoncés`,
+        );
+      }
+      return hash.digest("hex");
+    } catch (e) {
+      lastError = e;
+      rmSync(tmpPath, { force: true });
+      if (attempt < 3) {
+        const wait = 1000 * attempt;
+        process.stderr.write(`  tentative ${attempt}/3 échouée (${e.message}), nouvel essai dans ${wait} ms…\n`);
+        await new Promise((r) => setTimeout(r, wait));
+      }
+    }
+  }
+  throw lastError;
 }
 
 function install(fromPath, destPath) {
@@ -178,9 +209,19 @@ async function main() {
 
   if (opts.updateLock) {
     if (!installed) throw new Error(`Rien à épingler : ${entry.name} n'est pas installé.`);
+    if (!opts.force) {
+      throw new Error(
+        `--update-lock réécrit engine.lock.json : relancez avec --force pour confirmer.\n` +
+          `  Vérifiez ensuite « git diff engine.lock.json » avant de commiter.`,
+      );
+    }
+    if (process.env.CI === "true") {
+      throw new Error("--update-lock interdit en CI : l'empreinte y est une entrée, pas une sortie.");
+    }
+    const before = entry.sha256;
     entry.sha256 = installed;
     writeFileSync(LOCK_PATH, `${JSON.stringify(lock, null, 2)}\n`);
-    process.stdout.write(`✓ engine.lock.json : ${target} → ${installed}\n`);
+    process.stdout.write(`✓ engine.lock.json : ${target} ${before} → ${installed}\n`);
     return;
   }
 
@@ -227,6 +268,41 @@ async function main() {
   const url = `https://github.com/${lock.repository}/releases/download/${lock.tag}/${entry.name}`;
   const tmpPath = `${destPath}.tmp-${process.pid}`;
   process.stdout.write(`↓ ${entry.name} (${lock.repository} ${lock.tag})\n`);
+
+  // Double ancrage supply-chain : le SHA-256 épinglé dans le lock est
+  // recroisé avec le SHA256SUMS publié par la release. Un lock compromis
+  // seul ne suffit donc plus à faire passer un binaire altéré.
+  if (lock.checksumsAsset) {
+    try {
+      const sumsUrl = `https://github.com/${lock.repository}/releases/download/${lock.tag}/${lock.checksumsAsset}`;
+      const sumsRes = await fetch(sumsUrl, {
+        redirect: "follow",
+        headers: { "user-agent": "ratio-spoof-manager/fetch-engine" },
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (sumsRes.ok) {
+        const sumsText = await sumsRes.text();
+        const line = sumsText.split("\n").find((l) => l.trimEnd().endsWith(`  ${entry.name}`));
+        if (!line) {
+          throw new Error(
+            `${lock.checksumsAsset} ne liste pas ${entry.name} : release incomplète ou altérée.`,
+          );
+        }
+        const [sumsHash] = line.trim().split(/\s+/);
+        if (sumsHash.toLowerCase() !== expected) {
+          throw new Error(
+            `Divergence lock vs ${lock.checksumsAsset} pour ${entry.name}\n  lock       : ${expected}\n  SHA256SUMS : ${sumsHash.toLowerCase()}\n` +
+              `  L'un des deux a été altéré : ne construisez pas, investiguez.`,
+          );
+        }
+      } else {
+        process.stderr.write(`  (SHA256SUMS illisible : ${sumsRes.status}, seul le lock fait foi)\n`);
+      }
+    } catch (e) {
+      if (e.message.includes("Divergence") || e.message.includes("ne liste pas")) throw e;
+      process.stderr.write(`  (double ancrage impossible : ${e.message}, seul le lock fait foi)\n`);
+    }
+  }
 
   let got;
   try {

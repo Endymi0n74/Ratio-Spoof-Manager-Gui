@@ -44,13 +44,24 @@ pub fn run() {
             commands::minimize_window,
             commands::quit_app,
         ]))
-        .setup(|_app| {
+        .setup(|app| {
             #[cfg(debug_assertions)]
             {
                 use tauri::Manager;
-                _app.get_webview_window("main").unwrap().open_devtools();
+                if let Some(w) = app.get_webview_window("main") {
+                    w.open_devtools();
+                }
             }
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            // Fermer par la croix / Alt+F4 ne passe pas par `quit_app` : sans
+            // ceci, les moteurs survivent sur Unix (pas de job kill_on_close).
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                use tauri::Manager;
+                let manager = window.state::<SessionManager>();
+                tauri::async_runtime::block_on(manager.shutdown(crate::process::SHUTDOWN_GRACE_PERIOD));
+            }
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
