@@ -128,6 +128,8 @@ Détail Windows : `GenerateConsoleCtrlEvent` **renvoie succès même quand rien 
 
 - Contenu : voir § Passe de revue complète ci-dessus (XSS, validation IPC, orphelins, robustesse frontend, chaîne build, docs). Aucun changement fonctionnel visible sauf : presets/toasts assainis, validation settings explicite, `À propos` inchangé.
 - Bump 2.0.10 → 2.0.11 propagé aux 9 emplacements (package.json + lock via `npm version --no-git-tag-version`, tauri.conf, Cargo.toml + lock à la main, repli `app.js`, badges README ×2, GUIDE ×2).
+- **Première release 2.0.11 en échec — ma validation minisign était fausse.** Le `.sig` de Tauri est **une seule ligne base64** qui, décodée, donne le texte minisign (4 lignes). Mon premier regex testait le brut comme du texte clair : rejet d'une signature valide, workflow rouge à « Assembler le paquet portable ». Vérifié ensuite contre le vrai `.sig` de la 2.0.10 : ancien chemin KO, nouveau (décodage puis regex) OK. Leçon : valider un nouveau garde-fou contre un artefact réel **avant** de le brancher dans le workflow, pas après.
+- Release regénérée (tag déplacé sur le commit du fix, `055b10a`), run vert, 7 assets. Endpoint `latest` en 200 avec `version: 2.0.11`, installateur en HEAD 200.
 
 ## Passe de revue complète (14/10/2026) — revue + corrections, aucun MCP dispo
 
