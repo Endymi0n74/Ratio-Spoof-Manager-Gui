@@ -137,6 +137,12 @@ if (/\s/.test(target)) {
 // forme minisign : commentaire non fiable, signature, commentaire de
 // confiance, signature globale. On refuse un contenu qui n'a pas cette forme
 // plutôt que de publier une signature invalide.
+//
+// ATTENTION : le manifeste doit embarquer le blob brut (`sigRaw`), PAS le
+// texte décodé. Le plugin updater refait lui-même un base64-decode du champ
+// `signature` : y mettre le texte décodé casse la vérification avec
+// « Invalid symbol 10 » (le `\n`, symbole 10, du texte décodé) — constaté sur
+// la 2.0.11, dont le `latest.json` a dû être régénéré et réuploadé.
 const sigRaw = readFileSync(join(dir, sig), "utf8").trim();
 let sigText;
 try {
@@ -147,6 +153,10 @@ try {
 }
 if (!/^untrusted comment:.*\r?\n[A-Za-z0-9+/=]+\r?\ntrusted comment:.*\r?\n[A-Za-z0-9+/=]+\s*$/.test(sigText)) {
   console.error(`Signature ${sig} : format minisign inattendu, manifeste refusé.`);
+  process.exit(1);
+}
+if (/\s/.test(sigRaw)) {
+  console.error(`Signature ${sig} : le blob embarqué ne doit contenir aucun blanc (base64 monobloc).`);
   process.exit(1);
 }
 
@@ -163,7 +173,7 @@ const manifest = {
   pub_date: pubDate,
   platforms: {
     "windows-x86_64": {
-      signature: sigText,
+      signature: sigRaw,
       url: `${opts.baseUrl.replace(/\/+$/, "")}/${encodeURIComponent(target)}`,
     },
   },
