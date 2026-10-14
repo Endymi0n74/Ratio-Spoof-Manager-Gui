@@ -1,7 +1,7 @@
 # Memory — Ratio Spoof Manager (Tauri)
 
 - **Chemin :** `D:\Codex\ratio-spoof-manager-tauri` — **seul périmètre de travail** (ne rien écrire ailleurs, cf. § Points ouverts)
-- **Version :** 2.0.10 (`package.json`, `src-tauri/tauri.conf.json`)
+- **Version :** 2.0.11 (`package.json`, `src-tauri/tauri.conf.json`)
 - **Quoi :** GUI desktop (**Tauri 2 + Rust + HTML/CSS/JS/Vite**) pour `ratio-spoof`, le spoofeur de ratio Real-Debrid. Rewrite de l'interface Tkinter d'origine (GUI Python historique, dont le `CHANGELOG.md` est archivé dans le dépôt moteur).
 - **Doc principale :** [`README.md`](README.md)
 
@@ -123,6 +123,11 @@ Détail Windows : `GenerateConsoleCtrlEvent` **renvoie succès même quand rien 
 - **Deux détails d'environnement qui ont coûté du temps :** jsdom part d'un document vide, il faut recréer `<div id="app">` (celui d'`index.html`) sinon `render()` échoue sur un `null` ; et `import { App }` doit être **après** les `vi.mock` — les imports sont hissés, l'ordre écrit ne compte pas.
 - **Branché dans les deux workflows :** `npm test` après `npm ci` dans `ci.yml`, et avant le bundle NSIS dans `release.yml`. Le workflow de release échoue désormais **avant** de publier si le frontend ne s'exécute pas.
 - **`npm test` ajouté aux scripts** ; `vite.config.js` porte la section `test` (environnement jsdom, `url`, `setupFiles`, `include: src/**/*.test.js`).
+
+## Version 2.0.11 (14/10/2026) — passe de revue complète
+
+- Contenu : voir § Passe de revue complète ci-dessus (XSS, validation IPC, orphelins, robustesse frontend, chaîne build, docs). Aucun changement fonctionnel visible sauf : presets/toasts assainis, validation settings explicite, `À propos` inchangé.
+- Bump 2.0.10 → 2.0.11 propagé aux 9 emplacements (package.json + lock via `npm version --no-git-tag-version`, tauri.conf, Cargo.toml + lock à la main, repli `app.js`, badges README ×2, GUIDE ×2).
 
 ## Passe de revue complète (14/10/2026) — revue + corrections, aucun MCP dispo
 

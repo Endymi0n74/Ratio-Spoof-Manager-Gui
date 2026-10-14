@@ -2831,7 +2831,7 @@ dependencies = [
 
 [[package]]
 name = "ratio-spoof-manager"
-version = "2.0.10"
+version = "2.0.11"
 dependencies = [
  "anyhow",
  "chrono",
