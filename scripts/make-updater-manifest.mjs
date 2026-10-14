@@ -133,11 +133,19 @@ if (/\s/.test(target)) {
   process.exit(1);
 }
 
-// Le `.sig` est un fichier minisign : commentaire non fiable, signature,
-// commentaire de confiance, signature globale. On refuse un contenu qui n'a
-// pas cette forme plutôt que de publier une signature invalide.
-const sigText = readFileSync(join(dir, sig), "utf8").trim();
-if (!/^untrusted comment:.*\n[A-Za-z0-9+/=]+\ntrusted comment:.*\n[A-Za-z0-9+/=]+$/.test(sigText)) {
+// Le `.sig` de Tauri est un blob base64 unique qui, une fois décodé, a la
+// forme minisign : commentaire non fiable, signature, commentaire de
+// confiance, signature globale. On refuse un contenu qui n'a pas cette forme
+// plutôt que de publier une signature invalide.
+const sigRaw = readFileSync(join(dir, sig), "utf8").trim();
+let sigText;
+try {
+  sigText = Buffer.from(sigRaw, "base64").toString("utf8");
+} catch {
+  console.error(`Signature ${sig} : base64 illisible, manifeste refusé.`);
+  process.exit(1);
+}
+if (!/^untrusted comment:.*\r?\n[A-Za-z0-9+/=]+\r?\ntrusted comment:.*\r?\n[A-Za-z0-9+/=]+\s*$/.test(sigText)) {
   console.error(`Signature ${sig} : format minisign inattendu, manifeste refusé.`);
   process.exit(1);
 }
